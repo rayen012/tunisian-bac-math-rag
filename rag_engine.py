@@ -214,6 +214,8 @@ class TunisianMathRAG:
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
 
+        raw_count = len(documents)
+
         docs_out = []
         rank = 0
         for doc, meta, dist in zip(documents, metadatas, distances):
@@ -229,6 +231,13 @@ class TunisianMathRAG:
             ))
             if rank >= n_results:
                 break
+
+        if where_filter is not None:
+            best = f"{docs_out[0].distance:.4f}" if docs_out else "N/A"
+            logger.info(
+                f"Post-filter: {raw_count} raw → {len(docs_out)} matched "
+                f"(requested {n_results}), best_dist={best}"
+            )
 
         return docs_out
 
