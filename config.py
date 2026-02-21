@@ -35,15 +35,14 @@ USE_FP16 = torch.cuda.is_available()
 # ──────────────────────────────────────────────
 # Vertex AI LLM models
 # ──────────────────────────────────────────────
-CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.0-flash-exp")
+CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-3.1-pro-preview")
 
 # Models to try for OCR/digitization (in order of preference)
+# Note: Gemini 1.5 models are retired (404). Gemini 2.0 retires March 31, 2026.
 TRANSCRIBE_MODEL_CANDIDATES = [
-    "gemini-1.5-pro",
-    "gemini-1.5-pro-001",
-    "gemini-1.5-pro-002",
+    "gemini-3.1-pro-preview",
+    "gemini-3-pro",
     "gemini-2.0-pro",
-    "gemini-2.0-pro-001",
 ]
 
 # ──────────────────────────────────────────────
