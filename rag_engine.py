@@ -145,35 +145,100 @@ class TunisianMathRAG:
     # ──────────────────────────────────────────
     # Retrieval
     # ──────────────────────────────────────────
+
+    # Over-fetch multiplier: retrieve this many unfiltered results, then
+    # filter in Python.  Avoids ChromaDB HNSW/SQLite desync crashes on
+    # filtered queries (known issue with delete+upsert cycles).
+    # At ~2k chunks the cost difference is negligible (single-digit ms).
+    _OVERFETCH_N = 50
+
+    @staticmethod
+    def _matches_filter(meta: Dict, where_filter: Optional[Dict]) -> bool:
+        """Evaluate a ChromaDB-style where filter against a metadata dict.
+
+        Supports the subset of ChromaDB filter syntax we actually use:
+          - {"field": "value"}           → exact match
+          - {"field": {"$in": [...]}}    → membership
+          - {"$and": [...]}              → conjunction
+        """
+        if where_filter is None:
+            return True
+
+        for key, condition in where_filter.items():
+            if key == "$and":
+                # condition is a list of sub-filters
+                return all(
+                    TunisianMathRAG._matches_filter(meta, sub)
+                    for sub in condition
+                )
+
+            # key is a metadata field name
+            value = meta.get(key, "")
+
+            if isinstance(condition, dict):
+                if "$in" in condition:
+                    if value not in condition["$in"]:
+                        return False
+                # Extend here if you ever add $ne, $gt, etc.
+            else:
+                # Exact string match
+                if value != condition:
+                    return False
+
+        return True
+
     def _retrieve(
         self,
         query: str,
         n_results: int,
         where_filter: Optional[Dict] = None,
     ) -> List[RetrievedDoc]:
-        """Run a single ChromaDB query and return parsed results."""
-        kwargs = {"query_texts": [query], "n_results": n_results}
-        if where_filter:
-            kwargs["where"] = where_filter
+        """Retrieve docs by semantic similarity with optional metadata filtering.
+
+        Strategy: always query ChromaDB WITHOUT a where clause (immune to
+        HNSW/SQLite desync), then post-filter in Python.  At our DB size
+        (~2k chunks) the performance difference is zero.
+        """
+        fetch_n = max(n_results, self._OVERFETCH_N) if where_filter else n_results
 
         try:
-            results = self.collection.query(**kwargs)
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=fetch_n,
+            )
         except Exception as e:
-            logger.warning(f"Retrieval failed (filter={where_filter}): {e}")
+            logger.warning(f"Retrieval failed: {e}")
             return []
 
-        docs_out = []
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
 
-        for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances)):
+        raw_count = len(documents)
+
+        docs_out = []
+        rank = 0
+        for doc, meta, dist in zip(documents, metadatas, distances):
+            m = meta or {}
+            if not self._matches_filter(m, where_filter):
+                continue
+            rank += 1
             docs_out.append(RetrievedDoc(
                 content=doc or "",
-                metadata=meta or {},
+                metadata=m,
                 distance=dist,
-                rank=i + 1,
+                rank=rank,
             ))
+            if rank >= n_results:
+                break
+
+        if where_filter is not None:
+            best = f"{docs_out[0].distance:.4f}" if docs_out else "N/A"
+            logger.info(
+                f"Post-filter: {raw_count} raw → {len(docs_out)} matched "
+                f"(requested {n_results}), best_dist={best}"
+            )
+
         return docs_out
 
     def _two_stage_retrieve(self, query: str) -> tuple:
