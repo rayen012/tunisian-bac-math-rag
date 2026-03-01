@@ -42,7 +42,7 @@ USE_FP16 = torch.cuda.is_available()
 #   gemini-2.0-flash   — current stable GA, retires June 2026
 # AVOID: *-exp / *-preview models have unstable backends (500s) and
 #         tiny rate limits (429s) — not suitable for batch evaluation.
-CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.0-flash")
+CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.5-flash")
 
 # Models to try for OCR/digitization (in order of preference)
 # Note: Gemini 1.5 models are retired (404). Gemini 2.0 retires March 31, 2026.
