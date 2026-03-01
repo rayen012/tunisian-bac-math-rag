@@ -35,10 +35,14 @@ USE_FP16 = torch.cuda.is_available()
 # ──────────────────────────────────────────────
 # Vertex AI LLM models
 # ──────────────────────────────────────────────
-# Default: gemini-2.0-flash-exp (high quota, good for development/testing)
-# For thesis defense: set env var CHAT_MODEL_ID=gemini-3.1-pro-preview
-# (better reasoning, but strict preview rate limits)
-CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.0-flash-exp")
+# Default: gemini-2.0-flash (stable GA, reliable quotas)
+# Alternatives on Vertex AI:
+#   gemini-2.5-flash   — newer GA, faster, recommended upgrade path
+#   gemini-2.5-pro     — highest quality GA, higher cost
+#   gemini-2.0-flash   — current stable GA, retires June 2026
+# AVOID: *-exp / *-preview models have unstable backends (500s) and
+#         tiny rate limits (429s) — not suitable for batch evaluation.
+CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.0-flash")
 
 # Models to try for OCR/digitization (in order of preference)
 # Note: Gemini 1.5 models are retired (404). Gemini 2.0 retires March 31, 2026.
