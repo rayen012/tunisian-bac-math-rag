@@ -76,6 +76,16 @@ SIMILARITY_GOOD_THRESHOLD = 1.2
 SIMILARITY_FALLBACK_THRESHOLD = 1.6
 
 # ──────────────────────────────────────────────
+# Hybrid engine settings
+# ──────────────────────────────────────────────
+# The hybrid engine routes queries to one of three cases based on
+# retrieval quality (reuses existing thresholds):
+#   Case A: best_distance ≤ SIMILARITY_GOOD_THRESHOLD     → RAG-grounded
+#   Case B: GOOD < best_distance ≤ SIMILARITY_FALLBACK    → hybrid (RAG + curriculum)
+#   Case C: best_distance > SIMILARITY_FALLBACK or empty   → prompt-only fallback
+HYBRID_CASE_B_MAX_CONFIDENCE = "moyen"   # cap confidence when retrieval is weak
+
+# ──────────────────────────────────────────────
 # Supported file types for digitization
 # ──────────────────────────────────────────────
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
