@@ -74,6 +74,9 @@ MAX_TOTAL_CONTEXT_CHARS = 14000
 # ChromaDB returns L2 distances; lower = better
 SIMILARITY_GOOD_THRESHOLD = 1.2
 SIMILARITY_FALLBACK_THRESHOLD = 1.6
+# When a correction is retrieved, also fetch the matching exercise statement
+# so the LLM sees the full (exercise + correction) pair.
+RETRIEVE_K_COMPANIONS = 3  # max exercise chunks to fetch per correction group
 
 # ──────────────────────────────────────────────
 # Hybrid engine settings

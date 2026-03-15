@@ -50,6 +50,7 @@ from config import (
     EMBEDDING_MODEL_NAME, EMBEDDING_MAX_LENGTH, EMBEDDING_BATCH_SIZE, USE_FP16,
     CHAT_MODEL_ID,
     RETRIEVE_K_FIRST_PASS, RETRIEVE_K_SECOND_PASS, USE_TOP_N,
+    RETRIEVE_K_COMPANIONS,
     MAX_CHARS_PER_DOC, MAX_TOTAL_CONTEXT_CHARS,
     SIMILARITY_GOOD_THRESHOLD, SIMILARITY_FALLBACK_THRESHOLD,
     setup_logging,
@@ -241,6 +242,83 @@ class TunisianMathRAG:
 
         return docs_out
 
+    def _fetch_exercise_companions(
+        self, correction_docs: List[RetrievedDoc],
+    ) -> List[RetrievedDoc]:
+        """For selected correction docs, fetch matching exercise statements.
+
+        Matches on (chapter + type + year + exo_id) with is_solution=false.
+        Uses collection.get() (SQLite metadata lookup, not HNSW) so it's
+        immune to the desync issue and very fast.
+
+        Returns exercise chunks ordered by (group_key, chunk_index).
+        """
+        # Deduplicate: one lookup per unique (chapter, type, year, exo_id)
+        seen_keys = set()
+        companions = []
+
+        for doc in correction_docs:
+            m = doc.metadata
+            chapter = m.get("chapter", "")
+            dtype = m.get("type", "")
+            year = m.get("year", "")
+            exo_id = m.get("exo_id", "")
+
+            # Need at least chapter + one identifier to match reliably
+            if not chapter or (not year and not exo_id):
+                continue
+
+            key = (chapter, dtype, year, exo_id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            # Build where filter for the exercise (non-solution) counterpart
+            clauses = [
+                {"is_solution": "false"},
+                {"chapter": chapter},
+            ]
+            if dtype:
+                clauses.append({"type": dtype})
+            if year:
+                clauses.append({"year": year})
+            if exo_id:
+                clauses.append({"exo_id": exo_id})
+
+            where = {"$and": clauses}
+
+            try:
+                results = self.collection.get(
+                    where=where,
+                    limit=RETRIEVE_K_COMPANIONS,
+                    include=["documents", "metadatas"],
+                )
+            except Exception as e:
+                logger.warning(f"Companion fetch failed for {key}: {e}")
+                continue
+
+            ids = results.get("ids", [])
+            docs = results.get("documents", [])
+            metas = results.get("metadatas", [])
+
+            for doc_id, content, meta in zip(ids, docs, metas):
+                if not content:
+                    continue
+                companions.append(RetrievedDoc(
+                    content=content,
+                    metadata={**(meta or {}), "_companion_of": key},
+                    distance=-1.0,   # not from similarity search
+                    rank=0,          # will be re-ranked in context builder
+                ))
+
+        if companions:
+            logger.info(
+                f"Fetched {len(companions)} exercise companion chunks "
+                f"for {len(seen_keys)} correction groups"
+            )
+
+        return companions
+
     def _two_stage_retrieve(self, query: str) -> tuple:
         """Two-stage retrieval: corrections first, then textbook fallback.
 
@@ -265,7 +343,11 @@ class TunisianMathRAG:
         if best_first <= SIMILARITY_GOOD_THRESHOLD and first_pass:
             # CASE A: good correction match — use those
             selected = [d for d in first_pass if d.distance <= SIMILARITY_FALLBACK_THRESHOLD]
-            return selected[:USE_TOP_N], first_pass, [], "A"
+            selected = selected[:USE_TOP_N]
+            # Pair corrections with their exercise statements
+            companions = self._fetch_exercise_companions(selected)
+            paired = companions + selected  # exercises first, then corrections
+            return paired, first_pass, [], "A"
 
         # ── Second pass: textbook / cours ──
         second_pass = self._retrieve(
@@ -293,18 +375,29 @@ class TunisianMathRAG:
 
         # Sort by distance and take top N
         all_docs.sort(key=lambda d: d.distance)
+        selected = all_docs[:USE_TOP_N]
+
+        # Pair any corrections in the selection with their exercise statements
+        corrections_in_selected = [d for d in selected if d.metadata.get("is_solution") == "true"]
+        companions = self._fetch_exercise_companions(corrections_in_selected)
+        paired = companions + selected  # exercises first, then corrections + textbook
+
         case = "A" if (first_pass and first_pass[0].distance <= SIMILARITY_GOOD_THRESHOLD) else "B"
-        return all_docs[:USE_TOP_N], first_pass, second_pass, case
+        return paired, first_pass, second_pass, case
 
     # ──────────────────────────────────────────
     # Context builder
     # ──────────────────────────────────────────
     def _build_context(self, docs: List[RetrievedDoc]) -> str:
-        """Format retrieved docs into XML-tagged context blocks."""
+        """Format retrieved docs into XML-tagged context blocks.
+
+        Companion exercise chunks (distance=-1) are labelled [ÉNONCÉ]
+        so the LLM sees the full exercise+correction pair.
+        """
         blocks = []
         used_chars = 0
 
-        for doc in docs:
+        for idx, doc in enumerate(docs, 1):
             meta = doc.metadata
             src = meta.get("source", "Inconnu")
             chap = meta.get("chapter", "Inconnu")
@@ -312,18 +405,23 @@ class TunisianMathRAG:
             year = meta.get("year", "")
             sol = meta.get("is_solution", "")
             fn = meta.get("filename", "")
+            is_companion = doc.distance < 0  # fetched via metadata, not similarity
 
             excerpt = doc.content[:MAX_CHARS_PER_DOC]
             label = f"type={dtype} chapter={chap}"
             if year:
                 label += f" year={year}"
-            if sol == "true":
+            if is_companion:
+                label += " [ÉNONCÉ]"
+            elif sol == "true":
                 label += " [CORRECTION]"
 
+            dist_line = "DISTANCE: companion (énoncé)\n" if is_companion else f"DISTANCE: {doc.distance:.3f}\n"
+
             block = (
-                f'<SOURCE index="{doc.rank}" {label} filename="{fn}">\n'
+                f'<SOURCE index="{idx}" {label} filename="{fn}">\n'
                 f"URI: {src}\n"
-                f"DISTANCE: {doc.distance:.3f}\n"
+                f"{dist_line}"
                 f"CONTENU:\n{excerpt}\n"
                 f"</SOURCE>\n"
             )
@@ -338,7 +436,11 @@ class TunisianMathRAG:
     def _confidence_level(self, docs: List[RetrievedDoc], context_text: str) -> str:
         if not docs:
             return "faible"
-        best = docs[0].distance
+        # Skip companion docs (distance=-1) when computing best distance
+        real_docs = [d for d in docs if d.distance >= 0]
+        if not real_docs:
+            return "faible"
+        best = real_docs[0].distance
         if best <= SIMILARITY_GOOD_THRESHOLD and len(context_text) > 5000:
             return "fort"
         if best <= SIMILARITY_FALLBACK_THRESHOLD:
