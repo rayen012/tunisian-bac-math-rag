@@ -10,7 +10,6 @@ Type your question, press Enter. Type 'q' to quit.
 """
 
 from rag_engine import TunisianMathRAG
-from IPython.display import display, Markdown
 
 _engine = None
 
@@ -32,7 +31,7 @@ def ask(question: str, mode: str = "coaching"):
     if result.error:
         print(f"ERROR: {result.error}")
     else:
-        display(Markdown(result.answer))
+        print(result.answer)
 
     best_dist = result.selected_docs[0].distance if result.selected_docs else None
     print(f"\n--- case={result.retrieval_case} | "
@@ -71,7 +70,7 @@ def chat(mode: str = "coaching"):
         if result.error:
             print(f"\nERROR: {result.error}\n")
         else:
-            display(Markdown(result.answer))
+            print(result.answer)
 
         best_dist = result.selected_docs[0].distance if result.selected_docs else None
         print(f"\n--- case={result.retrieval_case} | "

@@ -13,7 +13,6 @@ below each answer so you can observe the three-case router behavior.
 """
 
 from hybrid_engine import TunisianMathHybrid
-from IPython.display import display, Markdown
 
 _engine = None
 
@@ -35,7 +34,7 @@ def ask(question: str, mode: str = "coaching"):
     if result.error:
         print(f"ERROR: {result.error}")
     else:
-        display(Markdown(result.answer))
+        print(result.answer)
 
     bd = f"{result.best_distance:.4f}" if result.best_distance is not None else "N/A"
     print(f"\n--- ROUTING: case={result.retrieval_case} | "
@@ -76,7 +75,7 @@ def chat(mode: str = "coaching"):
         if result.error:
             print(f"\nERROR: {result.error}\n")
         else:
-            display(Markdown(result.answer))
+            print(result.answer)
 
         bd = f"{result.best_distance:.4f}" if result.best_distance is not None else "N/A"
         print(f"\n--- ROUTING: case={result.retrieval_case} | "

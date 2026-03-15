@@ -10,7 +10,6 @@ Type your question, press Enter. Type 'q' to quit.
 """
 
 from prompt_only_engine import TunisianMathPromptOnly
-from IPython.display import display, Markdown
 
 _engine = None
 
@@ -32,7 +31,7 @@ def ask(question: str, mode: str = "coaching"):
     if result.error:
         print(f"ERROR: {result.error}")
     else:
-        display(Markdown(result.answer))
+        print(result.answer)
 
     print(f"\n--- confidence={result.confidence} | "
           f"time={result.total_time:.1f}s | "
@@ -66,7 +65,7 @@ def chat(mode: str = "coaching"):
         if result.error:
             print(f"\nERROR: {result.error}\n")
         else:
-            display(Markdown(result.answer))
+            print(result.answer)
 
         print(f"\n--- confidence={result.confidence} | "
               f"time={result.total_time:.1f}s ---\n")
