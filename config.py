@@ -57,16 +57,16 @@ TRANSCRIBE_MODEL_CANDIDATES = [
 # ──────────────────────────────────────────────
 # Corrections/exercises: smaller chunks preserve exercise boundaries
 CHUNK_CORRECTION = {"size": 1500, "overlap": 200}
-# Textbook/cours: larger chunks keep theorem context intact
-CHUNK_TEXTBOOK = {"size": 3000, "overlap": 250}
+# Course material (cours): larger chunks keep theorem context intact
+CHUNK_COURS = {"size": 3000, "overlap": 250}
 # Default fallback
 CHUNK_DEFAULT = {"size": 1800, "overlap": 200}
 
 # ──────────────────────────────────────────────
 # Retrieval parameters
 # ──────────────────────────────────────────────
-RETRIEVE_K_FIRST_PASS = 10   # corrections/bac/series search
-RETRIEVE_K_SECOND_PASS = 8   # textbook/cours fallback
+RETRIEVE_K_FIRST_PASS = 10   # corrections from Bac exams + series
+RETRIEVE_K_SECOND_PASS = 8   # course material (cours) fallback
 USE_TOP_N = 6                # max docs sent to LLM
 MAX_CHARS_PER_DOC = 2000
 MAX_TOTAL_CONTEXT_CHARS = 14000

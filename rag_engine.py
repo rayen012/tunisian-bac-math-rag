@@ -5,12 +5,13 @@ Core RAG pipeline separated from the Streamlit UI.
 
 Architecture:
   1. TWO-STAGE RETRIEVAL
-     - First pass: search corrections/bac/series (is_solution=true) — the
-       "mimicry" sources that define the redaction style.
-     - If best distance > threshold → second pass: search textbook/cours
-       for theorem backing.
+     - First pass: search corrections from series and Bac exams
+       (is_solution=true) — the "mimicry" sources that define the
+       redaction style.
+     - If best distance > threshold → second pass: search course material
+       (cours) for theorem backing.
      - This ensures the LLM always has style exemplars when available,
-       and falls back to theory when no similar exercise exists.
+       and falls back to course theory when no similar exercise exists.
 
   2. SIMILARITY THRESHOLDING
      - Documents above SIMILARITY_FALLBACK_THRESHOLD are discarded entirely
@@ -104,7 +105,7 @@ class QueryResult:
     first_pass_docs: List[RetrievedDoc] = field(default_factory=list)
     second_pass_docs: List[RetrievedDoc] = field(default_factory=list)
     selected_docs: List[RetrievedDoc] = field(default_factory=list)
-    retrieval_case: str = ""           # "A" (correction found) or "B" (textbook only)
+    retrieval_case: str = ""           # "A" (correction found) or "B" (cours only)
     confidence: str = ""               # "fort" / "moyen" / "faible"
     # Timings (seconds)
     retrieval_time: float = 0.0
@@ -320,17 +321,17 @@ class TunisianMathRAG:
         return companions
 
     def _two_stage_retrieve(self, query: str) -> tuple:
-        """Two-stage retrieval: corrections first, then textbook fallback.
+        """Two-stage retrieval: corrections first, then course-material fallback.
 
         Returns (selected_docs, first_pass, second_pass, case).
         """
-        # ── First pass: corrections / bac / series (solutions) ──
+        # ── First pass: corrections from Bac exams and exercise series (solutions) ──
         first_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_FIRST_PASS,
             where_filter={
                 "$and": [
-                    {"type": {"$in": ["bac_officiel", "serie", "devoir"]}},
+                    {"type": {"$in": ["bac_officiel", "serie"]}},
                     {"is_solution": "true"},
                 ]
             },
@@ -349,16 +350,16 @@ class TunisianMathRAG:
             paired = companions + selected  # exercises first, then corrections
             return paired, first_pass, [], "A"
 
-        # ── Second pass: textbook / cours ──
+        # ── Second pass: course material (cours) ──
         second_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_SECOND_PASS,
-            where_filter={"type": {"$in": ["cours", "textbook"]}},
+            where_filter={"type": "cours"},
         )
         best_second = second_pass[0].distance if second_pass else float("inf")
-        logger.info(f"Second pass (textbook): {len(second_pass)} docs, best_dist={best_second:.3f}")
+        logger.info(f"Second pass (cours): {len(second_pass)} docs, best_dist={best_second:.3f}")
 
-        # Merge: take good corrections + textbook
+        # Merge: take good corrections + course material
         all_docs = []
         for d in first_pass:
             if d.distance <= SIMILARITY_FALLBACK_THRESHOLD:
@@ -380,7 +381,7 @@ class TunisianMathRAG:
         # Pair any corrections in the selection with their exercise statements
         corrections_in_selected = [d for d in selected if d.metadata.get("is_solution") == "true"]
         companions = self._fetch_exercise_companions(corrections_in_selected)
-        paired = companions + selected  # exercises first, then corrections + textbook
+        paired = companions + selected  # exercises first, then corrections + cours
 
         case = "A" if (first_pass and first_pass[0].distance <= SIMILARITY_GOOD_THRESHOLD) else "B"
         return paired, first_pass, second_pass, case

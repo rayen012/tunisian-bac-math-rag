@@ -31,12 +31,28 @@ correction style follows precise rhetorical and logical conventions that
 students must reproduce in order to earn full marks. No publicly available,
 machine-readable corpus of these materials existed prior to this work; the
 primary sources are printed examination booklets, handwritten correction
-sheets, and scanned textbook pages.
+sheets, and scanned course pages.
 
-We manually scanned the raw mathematical material—official Baccalaureate
-examinations with their corrections, classroom exercise series (\textit{séries}),
-homework assignments (\textit{devoirs de synthèse}), and textbook chapters—from
-physical documents. A deliberate and consequential design decision was made
+The final corpus is organized into three categories of material:
+\begin{enumerate}
+    \item \textbf{Chapter-based course material} (\textit{Cours}): for each
+    chapter of the Baccalaureate programme (e.g., \textit{Nombres complexes},
+    \textit{Suites numériques}), a subfolder contains the course notes with
+    theorem statements, definitions, and properties.
+    \item \textbf{Chapter-based exercise series with corrections}
+    (\textit{séries et corrections}): for each chapter, a subfolder contains
+    exercise series paired with their worked corrections.
+    \item \textbf{Corrected old Baccalaureate exams}: a separate folder
+    (\texttt{Bac\_avec\_corrections\_Images/}) contains past official
+    examinations with their full corrections.
+\end{enumerate}
+
+This structure is designed for incremental growth: adding a new chapter
+requires only creating its \texttt{Cours/} and
+\texttt{series\_et\_corrections/} subfolders under the corresponding chapter
+directory.
+
+A deliberate and consequential design decision was made
 during acquisition: \textbf{each exercise was scanned together with its
 corresponding correction as a single logical unit}, rather than separating
 exercise statements from their solutions into independent files. We refer to
@@ -236,23 +252,22 @@ idiosyncrasies introduced during the Gemini transcription step.
 \subsubsection{Adaptive Chunking Strategy}
 
 Not all documents in the corpus have the same internal structure. Correction
-documents (Baccalaureate exams, exercise series, homework) tend to be organized
-around discrete exercises, each with clearly numbered parts. Textbook chapters,
-by contrast, contain long-form theorem statements, proofs, and explanatory
+documents (Baccalaureate exams and exercise series) tend to be organized
+around discrete exercises, each with clearly numbered parts. Course material,
+by contrast, contains long-form theorem statements, proofs, and explanatory
 text where meaning spans larger passages. A uniform chunk size would either
-fragment corrections mid-exercise or produce excessively small textbook chunks
+fragment corrections mid-exercise or produce excessively small course chunks
 that lose theorem context.
 
 We therefore implement \textit{adaptive chunking}: the chunk size and overlap
-are determined by the document type. Correction-style documents (\texttt{bac\_officiel},
-\texttt{serie}, \texttt{devoir}) use a smaller chunk size of 1{,}500
+are determined by the document type. Correction-style documents
+(\texttt{bac\_officiel}, \texttt{serie}) use a smaller chunk size of 1{,}500
 characters with 200 characters of overlap, designed to preserve individual
-exercise boundaries. Textbook and course material (\texttt{cours},
-\texttt{textbook}) use a larger chunk size of 3{,}000 characters with 250
-characters of overlap, keeping theorem statements and their proofs within a
-single chunk whenever possible. A default fallback of 1{,}800 characters with
-200 characters of overlap is used for documents that do not match either
-category.
+exercise boundaries. Course material (\texttt{cours}) uses a larger chunk
+size of 3{,}000 characters with 250 characters of overlap, keeping theorem
+statements and their proofs within a single chunk whenever possible. A default
+fallback of 1{,}800 characters with 200 characters of overlap is used for
+documents that do not match either category.
 
 The chunking algorithm itself prefers natural text boundaries over arbitrary
 character positions. When a chunk reaches its target size, the algorithm
@@ -278,9 +293,10 @@ blob path and file naming conventions. The metadata fields are:
 
 \begin{description}
     \item[\texttt{type}] Document category, inferred from path keywords:
-    \texttt{bac\_officiel} (official Baccalaureate exams),
-    \texttt{serie} (exercise series), \texttt{devoir} (homework),
-    \texttt{cours} (textbook/course material), or \texttt{exercice} (generic).
+    \texttt{bac\_officiel} (corrected old Baccalaureate exams),
+    \texttt{serie} (chapter-based exercise series with corrections),
+    \texttt{cours} (chapter-based course material), or \texttt{exercice}
+    (generic fallback for unclassified files).
 
     \item[\texttt{year}] Examination year, extracted via regex from patterns
     such as \texttt{Bac2019} or \texttt{bac\_2022}.
@@ -316,7 +332,7 @@ blob path and file naming conventions. The metadata fields are:
 This metadata schema serves two purposes. At retrieval time, it enables
 filtered search: the first retrieval pass queries only correction-type
 documents with \texttt{is\_solution=true}, while the second pass targets
-textbook material (see Section~\ref{subsec:retrieval-engine}). At the
+course material (see Section~\ref{subsec:retrieval-engine}). At the
 companion-pairing stage, the combination of \texttt{chapter}, \texttt{type},
 \texttt{year}, and \texttt{exo\_id} allows the system to locate the exercise
 statement corresponding to a retrieved correction (see
@@ -427,7 +443,7 @@ case:
     present in our documents.
 
     \item \textbf{Long context window.} With a maximum input length of 8{,}192
-    tokens, BGE-M3 can embed our larger textbook chunks (up to 3{,}000
+    tokens, BGE-M3 can embed our larger course-material chunks (up to 3{,}000
     characters) without truncation, preserving the full semantic content of
     theorem-length passages.
 
@@ -473,12 +489,12 @@ The retrieval strategy is the most distinctive architectural feature of the
 RAG engine. Rather than performing a single undifferentiated similarity search
 over the entire corpus, the engine executes a \textit{two-stage retrieval}
 pipeline that prioritizes correction-style documents before falling back to
-textbook material.
+course material.
 
 \paragraph{First pass: correction exemplars.}
 The first retrieval pass searches exclusively among correction-type documents
-(\texttt{type} $\in$ \{\texttt{bac\_officiel}, \texttt{serie},
-\texttt{devoir}\} with \texttt{is\_solution} = \texttt{true}), retrieving up
+(\texttt{type} $\in$ \{\texttt{bac\_officiel}, \texttt{serie}\}
+with \texttt{is\_solution} = \texttt{true}), retrieving up
 to $k_1 = 10$ candidates. The rationale is pedagogical: when a student asks a
 question, the most directly useful reference is a previously corrected exercise
 that is similar in structure and topic. Such a correction provides not just the
@@ -490,11 +506,11 @@ context window, we enable a form of \textit{style mimicry}: the model is
 instructed to reproduce the method and redaction style of the retrieved
 correction, adapting it to the student's specific question.
 
-\paragraph{Second pass: textbook fallback.}
+\paragraph{Second pass: course-material fallback.}
 If the best distance from the first pass exceeds a threshold (see below),
 indicating that no sufficiently similar correction exists in the corpus, the
-engine executes a second retrieval pass targeting textbook and course material
-(\texttt{type} $\in$ \{\texttt{cours}, \texttt{textbook}\}), retrieving up to
+engine executes a second retrieval pass targeting course material
+(\texttt{type} = \texttt{cours}), retrieving up to
 $k_2 = 8$ candidates. These documents provide the theoretical backing—theorem
 statements, properties, and definitions—needed to construct a solution from
 first principles. In this case, the system prompt instructs the LLM to build
@@ -510,7 +526,7 @@ This two-stage strategy reflects a deliberate pedagogical design. In the
 Tunisian Baccalaureate context, the distinction between ``solving an
 exercise'' and ``knowing the theory'' is fundamental. A correction exemplar
 teaches the student \textit{how to write} a solution in the expected format;
-a textbook reference teaches \textit{what mathematical tools to use}. By
+a course reference teaches \textit{what mathematical tools to use}. By
 separating these two retrieval passes, the system can compose its context
 from the most appropriate source for each query, rather than mixing
 corrections and theory indiscriminately.
@@ -573,8 +589,8 @@ Tunisian mathematics teacher, and encodes several constraints:
     insufficient, it must say so explicitly and provide only a method outline.
     \item \textbf{Mimicry decision tree:} In Case~A (correction found), the
     model is instructed to copy the method and redaction style of the retrieved
-    correction. In Case~B (textbook only), it must construct the solution from
-    retrieved theorems.
+    correction. In Case~B (course material only), it must construct the
+    solution from retrieved theorems.
     \item \textbf{Syllabus guard:} Methods that are outside the Tunisian
     Baccalaureate curriculum (L'Hôpital's rule, Taylor series, matrix
     diagonalization, etc.) are explicitly forbidden.

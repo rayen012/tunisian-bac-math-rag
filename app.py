@@ -94,7 +94,7 @@ def render_debug(result: QueryResult):
                 )
 
     if result.second_pass_docs:
-        with st.expander(f"Second pass (textbook): {len(result.second_pass_docs)} docs"):
+        with st.expander(f"Second pass (cours): {len(result.second_pass_docs)} docs"):
             for d in result.second_pass_docs[:8]:
                 st.markdown(
                     f"- **Rank {d.rank}** | dist={d.distance:.3f} | "
