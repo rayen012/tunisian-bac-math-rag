@@ -17,5 +17,9 @@ FlagEmbedding>=1.2.9
 # ML / Numeric
 torch>=2.0.0
 
+# Image preprocessing (watermark removal)
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+
 # UI
 streamlit>=1.30.0

@@ -150,6 +150,11 @@ CONTRAINTES :
 4. Si une partie est illisible : écris [ILLISIBLE] à cet endroit exact.
 5. Conserve l'ORDRE exact du document (énoncé puis correction).
 6. NE commente PAS, NE résume PAS. Fournis UNIQUEMENT le LaTeX final.
+7. IGNORE COMPLÈTEMENT les filigranes, signatures d'enseignants, noms en
+   arrière-plan, ou tout texte en diagonale superposé sur le contenu
+   (par exemple des noms comme "MOURAD ARBI" ou tout autre nom/signature
+   imprimé en fond de page). Ces éléments NE FONT PAS partie du contenu
+   mathématique. Ne les transcris JAMAIS.
 
 FORMAT :
 - \section*{Énoncé} en début (si énoncé présent).
