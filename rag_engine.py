@@ -320,18 +320,60 @@ class TunisianMathRAG:
 
         return companions
 
+    @staticmethod
+    def _dominant_chapters(docs: List[RetrievedDoc], max_chapters: int = 2) -> List[str]:
+        """Extract the most frequent chapter(s) from a set of retrieved docs.
+
+        Used to scope the second-pass (cours) retrieval so that only
+        chapter-relevant theory is injected — avoids dragging in unrelated
+        material (e.g. Nombres complexes when the question is about limits).
+
+        Returns up to `max_chapters` chapter names, ordered by frequency
+        then by best distance (tie-break).
+        """
+        from collections import Counter
+
+        chapter_best_dist: dict = {}   # chapter → best distance seen
+        chapter_count: Counter = Counter()
+
+        for d in docs:
+            ch = d.metadata.get("chapter", "")
+            if not ch or ch == "Inconnu":
+                continue
+            chapter_count[ch] += 1
+            if ch not in chapter_best_dist or d.distance < chapter_best_dist[ch]:
+                chapter_best_dist[ch] = d.distance
+
+        if not chapter_count:
+            return []
+
+        # Sort by (count DESC, best_distance ASC)
+        ranked = sorted(
+            chapter_count.keys(),
+            key=lambda ch: (-chapter_count[ch], chapter_best_dist.get(ch, 999)),
+        )
+        return ranked[:max_chapters]
+
     def _two_stage_retrieve(self, query: str) -> tuple:
         """Two-stage retrieval: corrections first, then course-material fallback.
 
+        Improvements over naive retrieval:
+          - First pass targets correction-style docs (bac_officiel / serie / exercice
+            with is_solution=true) to find style exemplars.
+          - Second pass targets cours material, SCOPED to the chapter(s) identified
+            in the first pass.  This prevents injecting theory from unrelated
+            chapters (e.g. complex numbers when the question is about limits).
+          - Exercise companion fetching pairs corrections with their statements.
+
         Returns (selected_docs, first_pass, second_pass, case).
         """
-        # ── First pass: corrections from Bac exams and exercise series (solutions) ──
+        # ── First pass: corrections from Bac exams, series, and exercises ──
         first_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_FIRST_PASS,
             where_filter={
                 "$and": [
-                    {"type": {"$in": ["bac_officiel", "serie"]}},
+                    {"type": {"$in": ["bac_officiel", "serie", "exercice"]}},
                     {"is_solution": "true"},
                 ]
             },
@@ -350,11 +392,25 @@ class TunisianMathRAG:
             paired = companions + selected  # exercises first, then corrections
             return paired, first_pass, [], "A"
 
-        # ── Second pass: course material (cours) ──
+        # ── Identify dominant chapter(s) from first-pass results ──
+        good_first = [d for d in first_pass if d.distance <= SIMILARITY_FALLBACK_THRESHOLD]
+        chapters = self._dominant_chapters(good_first) if good_first else []
+
+        # ── Second pass: course material (cours), scoped to relevant chapters ──
+        if chapters:
+            if len(chapters) == 1:
+                cours_filter = {"$and": [{"type": "cours"}, {"chapter": chapters[0]}]}
+            else:
+                cours_filter = {"$and": [{"type": "cours"}, {"chapter": {"$in": chapters}}]}
+            logger.info(f"Second pass scoped to chapter(s): {chapters}")
+        else:
+            cours_filter = {"type": "cours"}
+            logger.info("Second pass unscoped (no dominant chapter from first pass)")
+
         second_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_SECOND_PASS,
-            where_filter={"type": "cours"},
+            where_filter=cours_filter,
         )
         best_second = second_pass[0].distance if second_pass else float("inf")
         logger.info(f"Second pass (cours): {len(second_pass)} docs, best_dist={best_second:.3f}")

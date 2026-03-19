@@ -183,22 +183,38 @@ def extract_chapter(blob_name: str) -> str:
 
 
 def guess_doc_type(blob_name: str) -> str:
-    """Classify document type from its GCS path."""
+    """Classify document type from its GCS path.
+
+    Final corpus structure:
+      BacMath_Raw_Data/
+        <chapter>/Cours/             → "cours"
+        <chapter>/series_et_corrections/  → "serie"
+        Bac_avec_corrections_Images/      → "bac_officiel"
+    """
     n = blob_name.lower()
     # Order matters: more specific patterns first
     if "bac_avec_corrections" in n or re.search(r"bac\d{4}", n):
         return "bac_officiel"
-    if "serie" in n:
+    if "series_et_corrections" in n or "serie" in n:
         return "serie"
-    if "cours" in n or "tome" in n or "manuel" in n:
+    if "/cours/" in n or n.endswith("/cours"):
         return "cours"
     return "exercice"
 
 
 def detect_is_solution(blob_name: str) -> bool:
-    """Check if the path indicates a solution/correction document."""
+    """Check if the path indicates a solution/correction document.
+
+    Also detects Bac correction files in 'Bac_avec_corrections_Images/'
+    and correction files inside 'series_et_corrections/' whose filenames
+    contain 'corr' or 'sol' markers.
+    """
     n = blob_name.lower()
-    indicators = ["_sol/", "_sol.", "_sol_", "/sol/", "corrig", "correction", "_corr/", "_corr."]
+    indicators = [
+        "_sol/", "_sol.", "_sol_", "/sol/",
+        "corrig", "correction", "_corr/", "_corr.",
+        "bac_avec_corrections",
+    ]
     return any(ind in n for ind in indicators)
 
 

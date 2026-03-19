@@ -478,12 +478,21 @@ class TunisianMathHybrid:
     def _route_case(selected_docs: List[RetrievedDoc]) -> str:
         """Determine routing case based on retrieval quality.
 
+        Ignores companion docs (distance < 0) which are fetched via
+        metadata lookup, not similarity search — their synthetic distance
+        must not influence routing decisions.
+
         Returns "A", "B", or "C".
         """
         if not selected_docs:
             return "C"
 
-        best_distance = selected_docs[0].distance
+        # Skip companion docs (distance=-1) that were fetched by metadata
+        real_docs = [d for d in selected_docs if d.distance >= 0]
+        if not real_docs:
+            return "C"
+
+        best_distance = real_docs[0].distance
 
         if best_distance <= SIMILARITY_GOOD_THRESHOLD:
             return "A"
@@ -582,7 +591,9 @@ class TunisianMathHybrid:
         result.first_pass_docs = first_pass
         result.second_pass_docs = second_pass
         result.selected_docs = selected
-        result.best_distance = selected[0].distance if selected else None
+        # Use best real distance (skip companion docs with distance=-1)
+        real_selected = [d for d in selected if d.distance >= 0]
+        result.best_distance = real_selected[0].distance if real_selected else None
 
         # ── Step 2: Route ──
         case = self._route_case(selected)
