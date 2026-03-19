@@ -57,16 +57,16 @@ TRANSCRIBE_MODEL_CANDIDATES = [
 # ──────────────────────────────────────────────
 # Corrections/exercises: smaller chunks preserve exercise boundaries
 CHUNK_CORRECTION = {"size": 1500, "overlap": 200}
-# Textbook/cours: larger chunks keep theorem context intact
-CHUNK_TEXTBOOK = {"size": 3000, "overlap": 250}
+# Course material (cours): larger chunks keep theorem context intact
+CHUNK_COURS = {"size": 3000, "overlap": 250}
 # Default fallback
 CHUNK_DEFAULT = {"size": 1800, "overlap": 200}
 
 # ──────────────────────────────────────────────
 # Retrieval parameters
 # ──────────────────────────────────────────────
-RETRIEVE_K_FIRST_PASS = 10   # corrections/bac/series search
-RETRIEVE_K_SECOND_PASS = 8   # textbook/cours fallback
+RETRIEVE_K_FIRST_PASS = 10   # corrections from Bac exams + series
+RETRIEVE_K_SECOND_PASS = 8   # course material (cours) fallback
 USE_TOP_N = 6                # max docs sent to LLM
 MAX_CHARS_PER_DOC = 2000
 MAX_TOTAL_CONTEXT_CHARS = 14000
@@ -74,6 +74,19 @@ MAX_TOTAL_CONTEXT_CHARS = 14000
 # ChromaDB returns L2 distances; lower = better
 SIMILARITY_GOOD_THRESHOLD = 1.2
 SIMILARITY_FALLBACK_THRESHOLD = 1.6
+# When a correction is retrieved, also fetch the matching exercise statement
+# so the LLM sees the full (exercise + correction) pair.
+RETRIEVE_K_COMPANIONS = 3  # max exercise chunks to fetch per correction group
+
+# ──────────────────────────────────────────────
+# Hybrid engine settings
+# ──────────────────────────────────────────────
+# The hybrid engine routes queries to one of three cases based on
+# retrieval quality (reuses existing thresholds):
+#   Case A: best_distance ≤ SIMILARITY_GOOD_THRESHOLD     → RAG-grounded
+#   Case B: GOOD < best_distance ≤ SIMILARITY_FALLBACK    → hybrid (RAG + curriculum)
+#   Case C: best_distance > SIMILARITY_FALLBACK or empty   → prompt-only fallback
+HYBRID_CASE_B_MAX_CONFIDENCE = "moyen"   # cap confidence when retrieval is weak
 
 # ──────────────────────────────────────────────
 # Supported file types for digitization

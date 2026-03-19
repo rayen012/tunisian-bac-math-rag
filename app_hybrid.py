@@ -1,41 +1,33 @@
 #!/usr/bin/env python3
 """
-app.py — Streamlit UI for the Tunisian Bac Math AI Tutor
----------------------------------------------------------
-Thin presentation layer that delegates all RAG logic to rag_engine.py.
-
-Features:
-  - Caches the RAG engine (embedding model, ChromaDB, Vertex AI) via
-    st.cache_resource so they load exactly once across reruns.
-  - Two modes: Correction Type Bac / Coaching.
-  - Debug toggle: shows retrieval scores, selected docs, timings.
-  - Source transparency: expandable section with doc URIs and excerpts.
-  - Confidence badge based on retrieval quality.
+app_hybrid.py — Streamlit UI for the Hybrid RAG + Prompt-Only system
+---------------------------------------------------------------------
+Mirrors app.py and app_prompt_only.py but uses TunisianMathHybrid.
+Shows routing case (A/B/C) and knowledge source in the debug panel.
 
 Usage:
-  streamlit run app.py
-  streamlit run app.py -- --debug   # start with debug on
+  streamlit run app_hybrid.py --server.port 8503
 """
 
 import streamlit as st
-from rag_engine import TunisianMathRAG, QueryResult
+from hybrid_engine import TunisianMathHybrid, HybridResult
 
 # ──────────────────────────────────────────────
 # Page config
 # ──────────────────────────────────────────────
 st.set_page_config(
-    page_title="Bac Math Tounsi AI",
-    page_icon="\U0001F1F9\U0001F1F3",  # Tunisia flag
+    page_title="Bac Math Tounsi - Hybrid",
+    page_icon="\U0001F504",  # arrows (cycle)
     layout="wide",
 )
 
 # ──────────────────────────────────────────────
-# CSS
+# CSS (green theme — completing Tunisia flag trio)
 # ──────────────────────────────────────────────
 st.markdown("""
 <style>
-    .stApp { background-color: #f8f9fa; }
-    h1, h2, h3 { color: #c8102e; font-family: 'Helvetica Neue', sans-serif; }
+    .stApp { background-color: #f0faf0; }
+    h1, h2, h3 { color: #1b5e20; font-family: 'Helvetica Neue', sans-serif; }
     [data-testid="stSidebar"] { background-color: #ffffff; border-right: 2px solid #eee; }
     .stChatMessage { border-radius: 14px; padding: 10px; margin-bottom: 10px; }
     .badge-fort { display:inline-block; padding:4px 12px; border-radius:999px;
@@ -44,16 +36,24 @@ st.markdown("""
         font-size:13px; background:#fff3cd; color:#856404; border:1px solid #ffeeba; }
     .badge-faible { display:inline-block; padding:4px 12px; border-radius:999px;
         font-size:13px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+    .system-tag { display:inline-block; padding:4px 12px; border-radius:999px;
+        font-size:11px; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;
+        margin-bottom: 8px; }
+    .case-tag { display:inline-block; padding:4px 10px; border-radius:8px;
+        font-size:12px; font-weight:bold; margin-right:6px; }
+    .case-a { background:#d4edda; color:#155724; }
+    .case-b { background:#fff3cd; color:#856404; }
+    .case-c { background:#e8eaf6; color:#283593; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────
-# Cache the RAG engine (loads once)
+# Cache the engine (loads once)
 # ──────────────────────────────────────────────
 @st.cache_resource
-def get_rag_engine() -> TunisianMathRAG:
-    return TunisianMathRAG()
+def get_engine() -> TunisianMathHybrid:
+    return TunisianMathHybrid()
 
 
 # ──────────────────────────────────────────────
@@ -61,27 +61,41 @@ def get_rag_engine() -> TunisianMathRAG:
 # ──────────────────────────────────────────────
 def confidence_badge(level: str) -> str:
     labels = {
-        "fort": ("Contexte fort", "badge-fort"),
-        "moyen": ("Contexte moyen", "badge-moyen"),
-        "faible": ("Contexte faible", "badge-faible"),
+        "fort": ("Confiance forte", "badge-fort"),
+        "moyen": ("Confiance moyenne", "badge-moyen"),
+        "faible": ("Confiance faible", "badge-faible"),
     }
     text, css = labels.get(level, ("Inconnu", "badge-faible"))
     return f'<div class="{css}">{text}</div>'
 
 
-def render_debug(result: QueryResult):
+def case_badge(case: str, knowledge_source: str) -> str:
+    case_labels = {
+        "A": ("CAS A — Retrieval fort", "case-a"),
+        "B": ("CAS B — Hybride", "case-b"),
+        "C": ("CAS C — Parametrique", "case-c"),
+    }
+    label, css = case_labels.get(case, ("Inconnu", "case-c"))
+    return f'<span class="case-tag {css}">{label}</span> <small>({knowledge_source})</small>'
+
+
+def render_debug(result: HybridResult):
     """Render debug/observability panel."""
     st.markdown("---")
     st.markdown("**Debug / Observability**")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Retrieval", f"{result.retrieval_time:.2f}s")
     col2.metric("Generation", f"{result.generation_time:.2f}s")
     col3.metric("Total", f"{result.total_time:.2f}s")
     col4.metric("Case", result.retrieval_case)
+    col5.metric("Source", result.knowledge_source)
 
     st.markdown(f"**Confidence:** {result.confidence}")
+    st.markdown(f"**Best distance:** {result.best_distance:.4f}" if result.best_distance else "**Best distance:** N/A")
     st.markdown(f"**Selected docs:** {len(result.selected_docs)}")
+    st.markdown(f"**System prompt:** ~{result.system_prompt_tokens_approx} tokens")
+    st.markdown(f"**User prompt:** ~{result.user_prompt_tokens_approx} tokens")
 
     if result.first_pass_docs:
         with st.expander(f"First pass (corrections): {len(result.first_pass_docs)} docs"):
@@ -103,8 +117,13 @@ def render_debug(result: QueryResult):
                 )
 
 
-def render_sources(result: QueryResult):
-    """Render source transparency section."""
+def render_sources(result: HybridResult):
+    """Render source transparency section (Cases A and B only)."""
+    if result.retrieval_case == "C":
+        with st.expander("Sources"):
+            st.markdown("_Aucun document pertinent trouvé — réponse basée sur les connaissances du programme._")
+        return
+
     with st.expander("Sources utilisees"):
         if not result.selected_docs:
             st.markdown("_Aucune source trouvee._")
@@ -129,10 +148,10 @@ def render_sources(result: QueryResult):
 # Load engine
 # ──────────────────────────────────────────────
 try:
-    with st.spinner("Demarrage du moteur RAG..."):
-        engine = get_rag_engine()
+    with st.spinner("Demarrage du moteur Hybride..."):
+        engine = get_engine()
 except Exception as e:
-    st.error(f"Erreur de chargement du moteur RAG: {e}")
+    st.error(f"Erreur de chargement: {e}")
     st.stop()
 
 
@@ -140,7 +159,8 @@ except Exception as e:
 # Sidebar
 # ──────────────────────────────────────────────
 with st.sidebar:
-    st.title("Bac Math Coach")
+    st.title("Hybrid Engine")
+    st.markdown('<div class="system-tag">RAG + PROMPT-ONLY</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     mode = st.radio("Mode :", ["Chatbot Tounsi", "Correction Type Bac"])
@@ -156,15 +176,17 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption(f"Chunks indexes: {engine.chunk_count}")
+    st.caption("Systeme: Hybride (RAG + Prompt-Only)")
+    st.caption("Routage: A (retrieval) / B (hybride) / C (parametrique)")
 
 
 # ──────────────────────────────────────────────
 # Main chat UI
 # ──────────────────────────────────────────────
-st.title("Bac Math Tounsi AI")
+st.title("Bac Math Tounsi - Hybrid")
 st.markdown(
     "Pose ta question en **Francais** ou en **Derja**. "
-    "Je reponds avec la **redaction officielle tunisienne**."
+    "Ce systeme **combine RAG et prompt engineering** selon la qualite du retrieval."
 )
 
 if "messages" not in st.session_state:
@@ -178,19 +200,21 @@ for msg in st.session_state.messages:
 # Chat input
 user_msg = st.chat_input("Ex: Comment montrer qu'une suite est convergente ?")
 if user_msg:
-    # Show user message
     st.session_state.messages.append({"role": "user", "content": user_msg})
     with st.chat_message("user"):
         st.markdown(user_msg)
 
-    # Generate answer
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        placeholder.markdown("_Recherche en cours..._")
+        placeholder.markdown("_Recherche et analyse en cours..._")
 
         result = engine.query(user_msg, mode=mode_key)
 
-        # Confidence badge
+        # Case badge + confidence badge
+        st.markdown(
+            case_badge(result.retrieval_case, result.knowledge_source),
+            unsafe_allow_html=True,
+        )
         st.markdown(confidence_badge(result.confidence), unsafe_allow_html=True)
 
         if result.error:
