@@ -248,15 +248,19 @@ class TunisianMathRAG:
     ) -> List[RetrievedDoc]:
         """For selected correction docs, fetch matching exercise statements.
 
-        Matches on (chapter + type + year + exo_id) with is_solution=false.
+        Two matching strategies:
+          1. **Bac exercises**: match on (chapter + type + year + exo_id)
+          2. **Series exercises**: match on (chapter + exercise_key)
+             where exercise_key is e.g. "S1_EX1" — works for both old
+             and new naming conventions.
+
         Uses collection.get() (SQLite metadata lookup, not HNSW) so it's
         immune to the desync issue and very fast.
 
         Returns exercise chunks ordered by (group_key, chunk_index).
         """
-        # Deduplicate: one lookup per unique (chapter, type, year, exo_id)
-        seen_keys = set()
-        companions = []
+        seen_keys: set = set()
+        companions: list = []
 
         for doc in correction_docs:
             m = doc.metadata
@@ -264,29 +268,46 @@ class TunisianMathRAG:
             dtype = m.get("type", "")
             year = m.get("year", "")
             exo_id = m.get("exo_id", "")
+            exercise_key = m.get("exercise_key", "")
 
-            # Need at least chapter + one identifier to match reliably
-            if not chapter or (not year and not exo_id):
+            if not chapter:
                 continue
 
-            key = (chapter, dtype, year, exo_id)
-            if key in seen_keys:
+            # ── Strategy 1: series with exercise_key ───────────
+            if exercise_key and dtype == "serie":
+                key = ("exkey", chapter, exercise_key)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                where = {"$and": [
+                    {"is_solution": "false"},
+                    {"chapter": chapter},
+                    {"exercise_key": exercise_key},
+                ]}
+
+            # ── Strategy 2: bac with year/exo_id ──────────────
+            elif year or exo_id:
+                key = ("bac", chapter, dtype, year, exo_id)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                clauses = [
+                    {"is_solution": "false"},
+                    {"chapter": chapter},
+                ]
+                if dtype:
+                    clauses.append({"type": dtype})
+                if year:
+                    clauses.append({"year": year})
+                if exo_id:
+                    clauses.append({"exo_id": exo_id})
+                where = {"$and": clauses}
+
+            else:
+                # No identifiers to match on — skip
                 continue
-            seen_keys.add(key)
-
-            # Build where filter for the exercise (non-solution) counterpart
-            clauses = [
-                {"is_solution": "false"},
-                {"chapter": chapter},
-            ]
-            if dtype:
-                clauses.append({"type": dtype})
-            if year:
-                clauses.append({"year": year})
-            if exo_id:
-                clauses.append({"exo_id": exo_id})
-
-            where = {"$and": clauses}
 
             try:
                 results = self.collection.get(
