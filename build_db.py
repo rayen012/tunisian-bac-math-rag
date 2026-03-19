@@ -6,8 +6,8 @@ Index .tex files from Google Cloud Storage into local ChromaDB.
 
 Architecture decisions (thesis-grade):
   1. ADAPTIVE CHUNKING: corrections get smaller chunks (1500 chars) to preserve
-     exercise boundaries; textbook/cours get larger chunks (3000) to keep
-     theorem context intact.  This directly improves retrieval precision.
+     exercise boundaries; course material (cours) gets larger chunks (3000) to
+     keep theorem context intact.  This directly improves retrieval precision.
   2. RICH METADATA: type / year / chapter / session / exo_id / is_solution /
      group_id / source — enabling filtered retrieval at query time.
   3. INCREMENTAL UPSERT: manifest tracks GCS generation + content SHA-256.
@@ -44,7 +44,7 @@ from config import (
     PROJECT_ID, BUCKET_NAME, RAW_PREFIX,
     LOCAL_DB_PATH, COLLECTION_NAME,
     EMBEDDING_MODEL_NAME, EMBEDDING_MAX_LENGTH, EMBEDDING_BATCH_SIZE, USE_FP16,
-    CHUNK_CORRECTION, CHUNK_TEXTBOOK, CHUNK_DEFAULT,
+    CHUNK_CORRECTION, CHUNK_COURS, CHUNK_DEFAULT,
     setup_logging,
 )
 
@@ -151,10 +151,10 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
 
 def get_chunk_params(doc_type: str) -> Tuple[int, int]:
     """Return (chunk_size, overlap) based on document type."""
-    if doc_type in ("bac_officiel", "serie", "devoir", "exercice"):
+    if doc_type in ("bac_officiel", "serie", "exercice"):
         return CHUNK_CORRECTION["size"], CHUNK_CORRECTION["overlap"]
-    elif doc_type in ("cours", "textbook"):
-        return CHUNK_TEXTBOOK["size"], CHUNK_TEXTBOOK["overlap"]
+    elif doc_type == "cours":
+        return CHUNK_COURS["size"], CHUNK_COURS["overlap"]
     return CHUNK_DEFAULT["size"], CHUNK_DEFAULT["overlap"]
 
 
@@ -190,9 +190,7 @@ def guess_doc_type(blob_name: str) -> str:
         return "bac_officiel"
     if "serie" in n:
         return "serie"
-    if "devoir" in n:
-        return "devoir"
-    if "cours" in n or "textbook" in n or "tome" in n or "manuel" in n:
+    if "cours" in n or "tome" in n or "manuel" in n:
         return "cours"
     return "exercice"
 

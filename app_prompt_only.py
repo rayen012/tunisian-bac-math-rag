@@ -1,41 +1,33 @@
 #!/usr/bin/env python3
 """
-app.py — Streamlit UI for the Tunisian Bac Math AI Tutor
----------------------------------------------------------
-Thin presentation layer that delegates all RAG logic to rag_engine.py.
-
-Features:
-  - Caches the RAG engine (embedding model, ChromaDB, Vertex AI) via
-    st.cache_resource so they load exactly once across reruns.
-  - Two modes: Correction Type Bac / Coaching.
-  - Debug toggle: shows retrieval scores, selected docs, timings.
-  - Source transparency: expandable section with doc URIs and excerpts.
-  - Confidence badge based on retrieval quality.
+app_prompt_only.py — Streamlit UI for the Prompt-Only baseline
+---------------------------------------------------------------
+Mirrors app.py but uses TunisianMathPromptOnly instead of TunisianMathRAG.
+Side-by-side comparison: run both apps on different ports.
 
 Usage:
-  streamlit run app.py
-  streamlit run app.py -- --debug   # start with debug on
+  streamlit run app_prompt_only.py --server.port 8502
 """
 
 import streamlit as st
-from rag_engine import TunisianMathRAG, QueryResult
+from prompt_only_engine import TunisianMathPromptOnly, PromptOnlyResult
 
 # ──────────────────────────────────────────────
 # Page config
 # ──────────────────────────────────────────────
 st.set_page_config(
-    page_title="Bac Math Tounsi AI",
-    page_icon="\U0001F1F9\U0001F1F3",  # Tunisia flag
+    page_title="Bac Math Tounsi - Prompt Only",
+    page_icon="\U0001F4DD",  # memo
     layout="wide",
 )
 
 # ──────────────────────────────────────────────
-# CSS
+# CSS (same as app.py for visual consistency)
 # ──────────────────────────────────────────────
 st.markdown("""
 <style>
-    .stApp { background-color: #f8f9fa; }
-    h1, h2, h3 { color: #c8102e; font-family: 'Helvetica Neue', sans-serif; }
+    .stApp { background-color: #f0f4ff; }
+    h1, h2, h3 { color: #1a237e; font-family: 'Helvetica Neue', sans-serif; }
     [data-testid="stSidebar"] { background-color: #ffffff; border-right: 2px solid #eee; }
     .stChatMessage { border-radius: 14px; padding: 10px; margin-bottom: 10px; }
     .badge-fort { display:inline-block; padding:4px 12px; border-radius:999px;
@@ -44,16 +36,19 @@ st.markdown("""
         font-size:13px; background:#fff3cd; color:#856404; border:1px solid #ffeeba; }
     .badge-faible { display:inline-block; padding:4px 12px; border-radius:999px;
         font-size:13px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+    .system-tag { display:inline-block; padding:4px 12px; border-radius:999px;
+        font-size:11px; background:#e8eaf6; color:#283593; border:1px solid #c5cae9;
+        margin-bottom: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────
-# Cache the RAG engine (loads once)
+# Cache the engine (loads once)
 # ──────────────────────────────────────────────
 @st.cache_resource
-def get_rag_engine() -> TunisianMathRAG:
-    return TunisianMathRAG()
+def get_engine() -> TunisianMathPromptOnly:
+    return TunisianMathPromptOnly()
 
 
 # ──────────────────────────────────────────────
@@ -61,78 +56,37 @@ def get_rag_engine() -> TunisianMathRAG:
 # ──────────────────────────────────────────────
 def confidence_badge(level: str) -> str:
     labels = {
-        "fort": ("Contexte fort", "badge-fort"),
-        "moyen": ("Contexte moyen", "badge-moyen"),
-        "faible": ("Contexte faible", "badge-faible"),
+        "fort": ("Confiance forte", "badge-fort"),
+        "moyen": ("Confiance moyenne", "badge-moyen"),
+        "faible": ("Confiance faible", "badge-faible"),
     }
     text, css = labels.get(level, ("Inconnu", "badge-faible"))
     return f'<div class="{css}">{text}</div>'
 
 
-def render_debug(result: QueryResult):
-    """Render debug/observability panel."""
+def render_debug(result: PromptOnlyResult):
+    """Render debug panel."""
     st.markdown("---")
     st.markdown("**Debug / Observability**")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Retrieval", f"{result.retrieval_time:.2f}s")
-    col2.metric("Generation", f"{result.generation_time:.2f}s")
-    col3.metric("Total", f"{result.total_time:.2f}s")
-    col4.metric("Case", result.retrieval_case)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Generation", f"{result.generation_time:.2f}s")
+    col2.metric("Total", f"{result.total_time:.2f}s")
+    col3.metric("System", result.retrieval_case)
 
     st.markdown(f"**Confidence:** {result.confidence}")
-    st.markdown(f"**Selected docs:** {len(result.selected_docs)}")
-
-    if result.first_pass_docs:
-        with st.expander(f"First pass (corrections): {len(result.first_pass_docs)} docs"):
-            for d in result.first_pass_docs[:8]:
-                st.markdown(
-                    f"- **Rank {d.rank}** | dist={d.distance:.3f} | "
-                    f"type={d.metadata.get('type','')} | "
-                    f"chapter={d.metadata.get('chapter','')} | "
-                    f"file={d.metadata.get('filename','')}"
-                )
-
-    if result.second_pass_docs:
-        with st.expander(f"Second pass (cours): {len(result.second_pass_docs)} docs"):
-            for d in result.second_pass_docs[:8]:
-                st.markdown(
-                    f"- **Rank {d.rank}** | dist={d.distance:.3f} | "
-                    f"type={d.metadata.get('type','')} | "
-                    f"chapter={d.metadata.get('chapter','')}"
-                )
-
-
-def render_sources(result: QueryResult):
-    """Render source transparency section."""
-    with st.expander("Sources utilisees"):
-        if not result.selected_docs:
-            st.markdown("_Aucune source trouvee._")
-            return
-
-        for doc in result.selected_docs:
-            meta = doc.metadata
-            st.markdown(f"**Source {doc.rank}** (distance: {doc.distance:.3f})")
-            st.markdown(
-                f"- **Type:** {meta.get('type', '')} | "
-                f"**Chapitre:** {meta.get('chapter', '')} | "
-                f"**Annee:** {meta.get('year', '')} | "
-                f"**Solution:** {meta.get('is_solution', '')}"
-            )
-            st.markdown(f"- **URI:** `{meta.get('source', '')}`")
-            st.markdown("**Extrait:**")
-            st.code(doc.content[:800], language="latex")
-            st.markdown("---")
+    st.markdown(f"**System prompt:** ~{result.system_prompt_tokens_approx} tokens")
+    st.markdown(f"**User prompt:** ~{result.user_prompt_tokens_approx} tokens")
 
 
 # ──────────────────────────────────────────────
 # Load engine
 # ──────────────────────────────────────────────
 try:
-    with st.spinner("Demarrage du moteur RAG..."):
-        engine = get_rag_engine()
+    with st.spinner("Demarrage du moteur Prompt-Only..."):
+        engine = get_engine()
 except Exception as e:
-    st.error(f"Erreur de chargement du moteur RAG: {e}")
+    st.error(f"Erreur de chargement: {e}")
     st.stop()
 
 
@@ -140,7 +94,8 @@ except Exception as e:
 # Sidebar
 # ──────────────────────────────────────────────
 with st.sidebar:
-    st.title("Bac Math Coach")
+    st.title("Prompt-Only Baseline")
+    st.markdown('<div class="system-tag">SANS RETRIEVAL</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     mode = st.radio("Mode :", ["Chatbot Tounsi", "Correction Type Bac"])
@@ -155,16 +110,17 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.caption(f"Chunks indexes: {engine.chunk_count}")
+    st.caption("Systeme: Prompt-Engineering Only")
+    st.caption("Pas de ChromaDB / Pas d'embeddings")
 
 
 # ──────────────────────────────────────────────
 # Main chat UI
 # ──────────────────────────────────────────────
-st.title("Bac Math Tounsi AI")
+st.title("Bac Math Tounsi - Prompt Only")
 st.markdown(
     "Pose ta question en **Francais** ou en **Derja**. "
-    "Je reponds avec la **redaction officielle tunisienne**."
+    "Ce systeme utilise **uniquement le prompt engineering** (pas de RAG)."
 )
 
 if "messages" not in st.session_state:
@@ -178,15 +134,13 @@ for msg in st.session_state.messages:
 # Chat input
 user_msg = st.chat_input("Ex: Comment montrer qu'une suite est convergente ?")
 if user_msg:
-    # Show user message
     st.session_state.messages.append({"role": "user", "content": user_msg})
     with st.chat_message("user"):
         st.markdown(user_msg)
 
-    # Generate answer
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        placeholder.markdown("_Recherche en cours..._")
+        placeholder.markdown("_Generation en cours..._")
 
         result = engine.query(user_msg, mode=mode_key)
 
@@ -197,9 +151,6 @@ if user_msg:
             placeholder.error(f"Erreur: {result.error}")
         else:
             placeholder.markdown(result.answer)
-
-        # Sources
-        render_sources(result)
 
         # Debug
         if debug_mode:
