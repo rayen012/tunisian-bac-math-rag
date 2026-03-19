@@ -47,9 +47,10 @@ CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.5-flash")
 # Models to try for OCR/digitization (in order of preference)
 # Note: Gemini 1.5 models are retired (404). Gemini 2.0 retires March 31, 2026.
 TRANSCRIBE_MODEL_CANDIDATES = [
-    "gemini-3.1-pro-preview",
-    "gemini-3-pro",
-    "gemini-2.0-pro",
+       "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+ 
 ]
 
 # ──────────────────────────────────────────────
