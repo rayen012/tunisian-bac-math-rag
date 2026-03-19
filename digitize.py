@@ -85,8 +85,30 @@ def _guess_content_type(blob_name: str, blob_ct: Optional[str]) -> str:
     return mt or "application/octet-stream"
 
 
-def _tex_blob_name(raw_name: str) -> str:
-    """Companion .tex path: image.png -> image.png.tex"""
+def _tex_companion_names(raw_name: str) -> list:
+    """Return all possible .tex companion paths for a raw file.
+
+    Older digitized files may exist as 'image.tex' while newer ones
+    are saved as 'image.png.tex'.  We must check both conventions to
+    avoid re-digitizing files that were already processed.
+
+    Returns:
+        List of candidate .tex blob names (2 entries, may overlap if
+        the raw file has no extension — deduplication is harmless).
+    """
+    stem, _ = os.path.splitext(raw_name)
+    return [
+        raw_name + ".tex",       # new convention: image.png.tex
+        stem + ".tex",           # old convention: image.tex
+    ]
+
+
+def _tex_upload_name(raw_name: str) -> str:
+    """The .tex name to use when uploading a NEW transcription.
+
+    Always uses the new convention (raw_name + '.tex') so that future
+    runs detect it regardless of which check they use.
+    """
     return raw_name + ".tex"
 
 
@@ -120,9 +142,8 @@ def iter_pending_blobs(
         if ext not in SUPPORTED_EXTENSIONS:
             continue
 
-        # Already digitized?
-        tex_name = _tex_blob_name(blob.name)
-        if tex_name in existing_tex:
+        # Already digitized? Check both naming conventions.
+        if any(name in existing_tex for name in _tex_companion_names(blob.name)):
             continue
 
         ct = _guess_content_type(blob.name, blob.content_type)
@@ -278,7 +299,7 @@ def main():
                 model, item.gs_uri, item.content_type,
                 TRANSCRIPTION_PROMPT, retries=args.retries,
             )
-            tex_name = _tex_blob_name(item.name)
+            tex_name = _tex_upload_name(item.name)
             blob = bucket.blob(tex_name)
             blob.upload_from_string(latex, content_type="text/x-tex")
             logger.info(f"  Uploaded: gs://{BUCKET_NAME}/{tex_name}")
