@@ -25,19 +25,82 @@ implementation-specific choice where no direct precedent exists.
 
 The foundation of any RAG system is the quality and structure of the knowledge
 base from which documents are retrieved~\cite{lewis2020rag, gao2024rag_survey}.
+Research on data quality in high-stakes AI systems has shown that downstream
+model performance is often dominated by data quality rather than model
+architecture, and that ``data cascades''---compounding quality issues
+originating in early data collection stages---are the most common cause of
+failure in deployed AI systems~\cite{sambasivan2021everyone}. This finding
+guided every design decision in our data acquisition process: we prioritized
+corpus quality, structural consistency, and faithful preservation of the
+original documents over corpus size.
+
 In our case, the target domain is the Tunisian Baccalaureate mathematics
 examination (Section Mathématiques), a national standardized test whose
 correction style follows precise rhetorical and logical conventions that
 students must reproduce in order to earn full marks. No publicly available,
 machine-readable corpus of these materials existed prior to this work; the
 primary sources are printed examination booklets, handwritten correction
-sheets, and scanned course pages.
+sheets, and scanned course pages distributed by experienced preparatory-class
+teachers.
+
+\subsubsection{Physical Data Collection}
+
+The raw material was collected during a dedicated trip to Tunisia, where we
+obtained books and course materials from elite Baccalaureate mathematics
+teachers specializing in the Section Mathématiques program. These materials
+represent the authoritative reference for Tunisian students: each book
+contains exercises paired with detailed, worked corrections that follow the
+official redaction style expected by examiners.
+
+The scanning process presented two distinct challenges. For printed material
+(textbook pages, typed exercise sheets), a standard flatbed scanner or
+high-resolution phone camera produced images of sufficient quality for
+subsequent OCR. However, many corrections were handwritten by teachers in
+varying levels of legibility. Some handwritten corrections---particularly
+those with dense mathematical notation, small script, or faded
+ink---could not be reliably captured by any OCR system, as even
+state-of-the-art multimodal models struggle with degraded handwritten
+mathematical content~\cite{wang2023ocrbench, mahdavi2019icdar_math}. In these
+cases, the corrections were manually rewritten on a tablet (iPad with Apple
+Pencil) to produce clean, legible handwriting before scanning. While
+time-consuming, this manual intervention was essential to ensure that the
+quality of the knowledge base would not be compromised by illegible source
+material---a direct application of the principle that upstream data quality
+dominates downstream system performance~\cite{sambasivan2021everyone}.
+
+Each exercise was scanned \textit{together with its corresponding correction}
+as a single image or PDF, rather than separating exercise statements from
+their solutions into independent files. For course material, the entire course
+for each chapter was scanned as a continuous document. This scanning strategy
+was deliberate and is discussed further below.
+
+\subsubsection{Corpus Structure and File Organization}
+
+The scanned material was uploaded to a Google Cloud Storage (GCS)
+bucket~\cite{gcloud_storage2024}, organized into a hierarchical folder
+structure that encodes both the mathematical topic and the document type:
+
+\begin{verbatim}
+BacMath_Raw_Data/
+  01_Continuite_et_limites/
+    Cours/                          → course material
+    series_et_corrections/          → exercises + corrections
+  02_Derivabilite/
+    Cours/
+    series_et_corrections/
+  ...
+  20_Coniques/
+    Cours/
+    series_et_corrections/
+  Bac_avec_corrections_Images/      → past exam corrections
+\end{verbatim}
 
 The final corpus is organized into three categories of material:
 \begin{enumerate}
     \item \textbf{Chapter-based course material} (\textit{Cours}): for each
-    chapter of the Baccalaureate programme (e.g., \textit{Nombres complexes},
-    \textit{Suites numériques}), a subfolder contains the course notes with
+    of the 20 chapters of the Baccalaureate programme (e.g.,
+    \textit{Nombres complexes}, \textit{Suites réelles},
+    \textit{Intégrales}), a subfolder contains the course notes with
     theorem statements, definitions, and properties.
     \item \textbf{Chapter-based exercise series with corrections}
     (\textit{séries et corrections}): for each chapter, a subfolder contains
@@ -47,16 +110,32 @@ The final corpus is organized into three categories of material:
     examinations with their full corrections.
 \end{enumerate}
 
-This structure is designed for incremental growth: adding a new chapter
+This naming convention is not merely organizational---it is
+\textit{machine-readable}. The indexing pipeline (Section~\ref{subsec:database-construction})
+extracts document type, chapter name, year, session, and exercise number
+directly from the folder path and file name using regular expressions.
+For example, the path
+\texttt{BacMath\_Raw\_Data/10\_Nombres\_complexes/series\_et\_corrections/S1\_EX1\_sol\_1.jpg.tex}
+is parsed to extract: chapter = ``Nombres complexes'', type = ``serie'',
+exercise key = ``S1\_EX1'', is\_solution = true. This metadata-from-path
+strategy ensures that every chunk inherits structured metadata without
+requiring manual annotation, a design principle that scales with corpus
+growth.
+
+The structure is designed for incremental growth: adding a new chapter
 requires only creating its \texttt{Cours/} and
 \texttt{series\_et\_corrections/} subfolders under the corresponding chapter
-directory.
+directory. In total, the corpus comprises 624 source files spanning 20
+chapters: 312 corrected Baccalaureate exam pages, 250 series exercise files,
+and 62 course material files, yielding 1{,}422 chunks after indexing.
+
+\subsubsection{Paired Exercise--Correction Acquisition}
 
 A deliberate and consequential design decision was made
 during acquisition: \textbf{each exercise was scanned together with its
 corresponding correction as a single logical unit}, rather than separating
 exercise statements from their solutions into independent files. We refer to
-this strategy as \textit{paired exercise–correction acquisition}.
+this strategy as \textit{paired exercise--correction acquisition}.
 
 This decision was motivated by three observations. First, in mathematical
 pedagogy, the correction is not merely an answer but a complete reasoning
@@ -69,17 +148,17 @@ worked example, not an orphaned solution missing its premise. Third, research
 on chunking granularity for RAG systems has shown that preserving the logical
 structure of documents during indexing significantly improves retrieval
 relevance. Zhao~et~al.~\cite{zhao2024financial_chunking} demonstrated that
-structure-aware chunking—segmenting documents according to their inherent
-element types rather than at arbitrary character boundaries—leads to measurably
+structure-aware chunking---segmenting documents according to their inherent
+element types rather than at arbitrary character boundaries---leads to measurably
 better retrieval accuracy compared to paragraph-level chunking, a finding
 echoed in the broader literature on adaptive chunk
 granularity~\cite{chen2024mog}. While these studies address financial and
 general-purpose documents rather than mathematical exercises specifically, the
-underlying principle applies directly: the exercise–correction pair constitutes
+underlying principle applies directly: the exercise--correction pair constitutes
 a natural structural unit in mathematical pedagogy, and its preservation during
 acquisition respects the document's inherent logical boundaries.
 
-No prior work has studied paired exercise–correction acquisition for
+No prior work has studied paired exercise--correction acquisition for
 mathematical RAG systems in the specific context of the Tunisian Baccalaureate.
 This design decision is therefore presented as a domain-specific contribution
 of this thesis, grounded in the broader principles of structure-aware document
@@ -183,6 +262,29 @@ consistently use the \texttt{<original\_filename>.tex} convention, ensuring
 idempotent behavior. While minor in isolation, this kind of robustness issue
 matters in a thesis prototype where API budgets are limited and reproducibility
 of the corpus is important.
+
+\subsubsection{Digitization Quality and OCR Groundtruth}
+
+Because every downstream component of the RAG pipeline---chunking, embedding,
+retrieval, and generation---operates on the digitized \LaTeX{} text rather than
+the original images, any errors introduced during digitization propagate
+through the entire system. A misrecognized formula, a dropped minus sign, or a
+garbled theorem statement will be embedded into the vector store, potentially
+retrieved as context, and injected into the language model's prompt, leading to
+incorrect answers. This error propagation chain makes digitization quality a
+critical bottleneck for the overall system~\cite{sambasivan2021everyone}.
+
+To quantify the fidelity of Gemini's transcription, we conducted a groundtruth
+evaluation in which a sample of digitized pages was manually compared against
+the original scanned documents. The methodology and results of this evaluation
+are presented in Section~\ref{subsec:results}, as they constitute an
+experimental finding rather than a design decision. However, the key
+observation is relevant here: Gemini's transcription quality was found to be
+sufficient for the printed and cleanly rewritten material that constitutes the
+majority of our corpus, while degraded handwritten pages (which motivated the
+iPad rewriting strategy described above) showed higher error rates. This
+confirms that the manual rewriting step, though labor-intensive, was a
+necessary investment in data quality.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
