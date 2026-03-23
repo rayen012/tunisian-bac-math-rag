@@ -1,0 +1,160 @@
+% =============================================================================
+%  CHAPTER 4 — EXPERIMENTS (~20-35% of thesis)
+% =============================================================================
+\section{Experiments}
+\label{sec:experiments}
+
+This section describes the experimental setup, evaluation methodology, and
+results. Following the supervisor's guidance, we focus on the quality of
+implementation and the scientific approach rather than achieving specific
+performance targets.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Experimental Setup}
+\label{subsec:experimental-setup}
+
+\subsubsection{Corpus Statistics}
+
+% TODO: Fill in actual numbers from build_db.py --stats output
+\begin{table}[H]
+\centering
+\caption{Corpus statistics after digitization and indexing.}
+\label{tab:corpus-stats}
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Total raw files scanned            & TODO \\
+Successfully digitized files       & TODO \\
+Total .tex files in GCS            & 624 \\
+Total chunks in ChromaDB           & 903 \\
+Chapters covered                   & TODO \\
+Years of Bac exams included        & TODO \\
+Course material chunks             & TODO \\
+Correction/exercise chunks         & TODO \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Hardware and Software Environment}
+
+All experiments were conducted on the following environment:
+\begin{itemize}
+    \item \textbf{Platform}: Google Cloud Vertex AI Workbench
+    \item \textbf{Python}: 3.10
+    \item \textbf{Embedding model}: BGE-M3 (\texttt{BAAI/bge-m3}), running
+    on CPU with FP32 precision
+    \item \textbf{Generation model}: Gemini 2.5 Flash via Vertex AI
+    \item \textbf{Vector database}: ChromaDB (local persistent storage)
+    \item \textbf{Embedding dimension}: 1024 (BGE-M3 dense vectors)
+    \item \textbf{Maximum embedding length}: 8192 tokens
+\end{itemize}
+
+\subsubsection{Hyperparameters}
+
+Table~\ref{tab:hyperparameters} lists the key hyperparameters used across
+all experiments.
+
+\begin{table}[H]
+\centering
+\caption{System hyperparameters.}
+\label{tab:hyperparameters}
+\begin{tabular}{llr}
+\toprule
+\textbf{Component} & \textbf{Parameter} & \textbf{Value} \\
+\midrule
+\multirow{2}{*}{Chunking (corrections)} & Chunk size & 1500 chars \\
+                                          & Overlap & 200 chars \\
+\multirow{2}{*}{Chunking (course)}       & Chunk size & 3000 chars \\
+                                          & Overlap & 250 chars \\
+\midrule
+\multirow{4}{*}{Retrieval}               & $k$ first pass & 10 \\
+                                          & $k$ second pass & 8 \\
+                                          & Top-$n$ to LLM & 6 \\
+                                          & Companion chunks & 3 \\
+\midrule
+\multirow{2}{*}{Thresholds (L2)}         & Good match & $\leq 1.2$ \\
+                                          & Fallback match & $\leq 1.6$ \\
+\midrule
+\multirow{2}{*}{Generation}              & Max context chars & 14000 \\
+                                          & Max chars per doc & 2000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Evaluation Methodology}
+\label{subsec:evaluation-methodology}
+
+Evaluating an AI tutoring system for mathematics is inherently challenging
+because correctness requires verifying both mathematical validity and
+stylistic adherence. We employ a multi-dimensional evaluation approach.
+
+\subsubsection{Evaluation Dimensions}
+
+We evaluate each system variant along four dimensions:
+
+\begin{enumerate}
+    \item \textbf{Mathematical correctness}: Does the answer contain correct
+    mathematical reasoning and computations?
+
+    \item \textbf{Curriculum fidelity}: Does the answer stay within the
+    Tunisian Bac program boundaries, using only permitted methods and
+    theorems?
+
+    \item \textbf{Style adherence}: Does the answer follow the Tunisian
+    correction redaction conventions (formal French phrasing, structured
+    proof layout)?
+
+    \item \textbf{Retrieval quality} (RAG and hybrid only): Are the
+    retrieved documents relevant to the query? Do retrieval scores reflect
+    actual relevance?
+\end{enumerate}
+
+\subsubsection{Test Queries}
+
+% TODO: Define and list test queries
+We constructed a set of test queries covering:
+\begin{itemize}
+    \item Questions directly from past Bac exams (to test retrieval of
+    matching corrections)
+    \item Novel questions on Bac topics (to test generalization)
+    \item Questions on topics close to but outside the Bac program (to test
+    curriculum guardrails)
+    \item Questions in Tunisian Derja (to test language robustness)
+\end{itemize}
+
+% TODO: Add a table of test queries here
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Results}
+\label{subsec:results}
+
+% TODO: Fill in results from evaluation notebooks
+% (test_rag.ipynb, test_hybrid.ipynb, test_prompt_only.ipynb)
+
+\subsubsection{Retrieval Quality Analysis}
+
+% TODO: Analyze retrieval distances, show distribution
+% - How many queries fall in Case A, B, C?
+% - What are typical retrieval distances?
+% - Show examples of good and bad retrievals
+
+\subsubsection{System Comparison}
+
+% TODO: Compare the three systems across the four evaluation dimensions
+% Table format recommended:
+% | Query | RAG score | Prompt-Only score | Hybrid score | Notes |
+
+\subsubsection{Qualitative Examples}
+
+% TODO: Show 2-3 concrete examples of queries and responses from each system
+% Focus on:
+% 1. A query where RAG clearly outperforms (exercise with matching correction)
+% 2. A query where prompt-only works well (general curriculum question)
+% 3. A query showing hybrid routing in action
+
+% NOTE TO SELF: Do NOT explain the results here. Just present them.
+% Explanation goes in the Discussion section.

@@ -1,0 +1,163 @@
+% =============================================================================
+%  Bachelor's Thesis — Tunisian Baccalaureate Mathematics RAG System
+%  Technical University of Munich (TUM)
+% =============================================================================
+\documentclass[12pt, a4paper, twoside]{article}
+
+% ── Packages ─────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+
+% Layout
+\usepackage[
+  left=3cm, right=2.5cm, top=2.5cm, bottom=2.5cm,
+  headheight=15pt
+]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% Headers / footers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[RE]{\nouppercase{\leftmark}}
+\fancyhead[LO]{\nouppercase{\rightmark}}
+
+% Math
+\usepackage{amsmath, amssymb, amsthm}
+
+% Graphics & floats
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+
+% Code listings
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{red!70!black},
+}
+
+% Links
+\usepackage[colorlinks=true, linkcolor=blue!50!black, citecolor=green!50!black, urlcolor=blue!70!black]{hyperref}
+\usepackage{url}
+
+% Bibliography
+\usepackage[numbers, sort&compress]{natbib}
+
+% Misc
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% ── Custom commands ──────────────────────────────────────────────────────────
+\newcommand{\thesistitle}{Retrieval-Augmented Generation for Tunisian Baccalaureate Mathematics: A Hybrid AI Tutoring System}
+\newcommand{\authorname}{Rayen}  % TODO: Add full name
+\newcommand{\supervisorname}{TODO: Supervisor Name}
+\newcommand{\advisorname}{TODO: Advisor Name}
+\newcommand{\submissiondate}{March 2026}
+
+% =============================================================================
+\begin{document}
+
+% ── Title page ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{1cm}
+
+% TODO: Add TUM logo
+% \includegraphics[width=0.4\textwidth]{figures/tum_logo.pdf}
+
+\vspace{1.5cm}
+
+{\Large \textbf{Technical University of Munich}}\\[0.3cm]
+{\large Department of Informatics}\\[2cm]
+
+{\LARGE \textbf{Bachelor's Thesis in Informatics}}\\[1.5cm]
+
+{\huge \textbf{\thesistitle}}\\[2cm]
+
+{\Large \authorname}\\[3cm]
+
+\begin{tabular}{rl}
+\textbf{Supervisor:}  & \supervisorname \\
+\textbf{Advisor:}     & \advisorname \\
+\textbf{Submission:}  & \submissiondate \\
+\end{tabular}
+
+\vfill
+\end{titlepage}
+
+% ── Declaration of authorship ────────────────────────────────────────────────
+\newpage
+\thispagestyle{empty}
+\section*{Declaration of Authorship}
+
+I confirm that this bachelor's thesis is my own work and I have documented all
+sources and material used.
+
+\vspace{2cm}
+\noindent
+Munich, \submissiondate \hfill \authorname
+
+\newpage
+
+% ── Abstract ─────────────────────────────────────────────────────────────────
+\thispagestyle{empty}
+\input{chapters/abstract}
+
+\newpage
+
+% ── Table of contents ────────────────────────────────────────────────────────
+\tableofcontents
+\newpage
+
+% ── List of figures / tables ─────────────────────────────────────────────────
+\listoffigures
+\listoftables
+\newpage
+
+% ── Main chapters ────────────────────────────────────────────────────────────
+\setcounter{page}{1}
+\pagenumbering{arabic}
+
+\input{chapters/introduction}
+\newpage
+
+\input{chapters/background}
+\newpage
+
+\input{chapters/methodology}
+\newpage
+
+\input{chapters/experiments}
+\newpage
+
+\input{chapters/discussion}
+\newpage
+
+\input{chapters/conclusion}
+
+% ── References ───────────────────────────────────────────────────────────────
+\newpage
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

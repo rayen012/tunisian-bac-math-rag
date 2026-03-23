@@ -1,0 +1,33 @@
+% =============================================================================
+%  ABSTRACT
+% =============================================================================
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+
+% TODO: Write last — after all other chapters are complete.
+% Should be 0.5–1 page summarizing:
+%   - Problem: No AI tutoring system exists for Tunisian Bac Math
+%   - Approach: RAG system with two-stage retrieval, compared against
+%     prompt-only and hybrid baselines
+%   - Key results: (fill in after experiments)
+%   - Conclusion: (1-2 sentences)
+
+This thesis presents the design, implementation, and evaluation of a
+Retrieval-Augmented Generation (RAG) system for the Tunisian Baccalaureate
+mathematics examination (Section Math\'{e}matiques). The system combines a
+curated corpus of digitized course material, exercise series, and corrected
+past examinations with a two-stage retrieval mechanism and a large language
+model to produce curriculum-faithful answers that mimic the official Tunisian
+correction style.
+
+We compare three approaches: (1)~a pure RAG system that grounds every answer
+in retrieved documents, (2)~a prompt-only baseline that encodes the entire
+syllabus into the system prompt without retrieval, and (3)~a hybrid engine
+that routes queries to RAG or prompt-only mode based on retrieval confidence.
+% TODO: Add 2-3 sentences about key experimental findings once results are ready.
+
+The system is deployed as an interactive web application and addresses a
+practical gap in educational technology for the Tunisian secondary school
+context, where no domain-specific AI tutoring tool previously existed.
+
+% TODO: Refine after experiments are complete.

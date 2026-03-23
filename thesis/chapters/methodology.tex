@@ -1,0 +1,119 @@
+% =============================================================================
+%  CHAPTER 3 — METHODOLOGY (~15-35% of thesis)
+% =============================================================================
+\section{Methodology}
+\label{sec:methodology}
+
+This section describes the design and implementation of the three system
+variants developed in this thesis: the RAG system
+(Section~\ref{sec:rag-system}), the prompt-only baseline
+(Section~\ref{sec:prompt-only}), and the hybrid engine
+(Section~\ref{sec:hybrid}). We first present an overview of the overall
+architecture, then detail each component.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{System Overview}
+\label{subsec:system-overview}
+
+Figure~\ref{fig:system-architecture} illustrates the complete system
+architecture. The pipeline consists of three phases: (1)~data preparation
+(digitization and indexing), (2)~query processing (retrieval and generation),
+and (3)~user interface.
+
+% TODO: Add architecture diagram
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/architecture.pdf}
+%     \caption{System architecture showing the data pipeline (top), the three
+%     generation approaches (center), and the Streamlit interface (bottom).}
+%     \label{fig:system-architecture}
+% \end{figure}
+
+All three system variants share the same Gemini model for generation, the
+same temperature and token settings, and the same system persona
+(``Monsieur Tounsi''). The only difference is how each variant constructs
+the prompt: the RAG system includes retrieved documents, the prompt-only
+system includes an encoded curriculum, and the hybrid system dynamically
+selects between the two based on retrieval confidence.
+
+% ─────────────────────────────────────────────────────────────────────────────
+% Include the existing detailed RAG methods section
+% The detailed RAG methods section is in the parent thesis directory.
+% When compiling from thesis/, use: pdflatex main.tex
+\input{rag_methods_section}
+% NOTE: If compilation fails, ensure you run pdflatex from the thesis/ directory,
+% or adjust the path to ../rag_methods_section if compiling from thesis/chapters/.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Prompt-Only Baseline}
+\label{sec:prompt-only}
+
+The prompt-only baseline serves as a control condition: it uses the same
+Gemini model and persona but receives no retrieved documents. Instead, it
+encodes the Tunisian Bac mathematics curriculum directly into the system
+prompt through ten specialized prompt components:
+
+\begin{enumerate}
+    \item \textbf{System persona}: Establishes the ``Monsieur Tounsi''
+    identity with curriculum boundaries.
+
+    \item \textbf{Instruction structure}: Defines the expected answer format
+    with numbered steps and formal French mathematical phrasing.
+
+    \item \textbf{Reasoning guardrails}: Explicitly forbids methods outside
+    the Bac program (e.g., L'H\^{o}pital's rule, Lebesgue integration).
+
+    \item \textbf{Output formatting}: Specifies LaTeX-in-Markdown rendering
+    conventions.
+
+    \item \textbf{Hallucination control}: Instructs the model to refuse
+    rather than fabricate if unsure about curriculum boundaries.
+
+    \item \textbf{Syllabus guard}: Lists the exact chapters and topics in
+    the Bac Math program.
+
+    \item \textbf{Self-verification}: Requires the model to verify each step
+    against curriculum constraints before outputting.
+
+    \item \textbf{Self-check block}: Adds an internal consistency check at
+    the end of each answer.
+
+    \item \textbf{Refusal policy}: Defines clear refusal messages for
+    out-of-scope queries.
+
+    \item \textbf{Confidence calibration}: Maps the model's internal
+    certainty to explicit confidence labels.
+\end{enumerate}
+
+This baseline tests the hypothesis that a sufficiently detailed prompt can
+compensate for the absence of retrieved documents. By comparing it against
+the RAG system, we can isolate the value added by retrieval.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Hybrid Engine}
+\label{sec:hybrid}
+
+The hybrid engine combines the strengths of both approaches through a
+confidence-based routing mechanism. It operates in three cases:
+
+\begin{itemize}
+    \item \textbf{Case~A} (best retrieval distance $\leq 1.2$): The query
+    closely matches existing exercises in the corpus. The system uses
+    RAG-grounded generation with strong anti-hallucination constraints,
+    instructing the model to closely follow the retrieved correction style.
+
+    \item \textbf{Case~B} ($1.2 <$ best distance $\leq 1.6$): The query
+    partially matches the corpus. The system combines retrieved context with
+    curriculum knowledge from the prompt-only component, allowing the model
+    to supplement weak retrievals with parametric knowledge.
+
+    \item \textbf{Case~C} (best distance $> 1.6$ or no results): The query
+    has no good match in the corpus. The system falls back entirely to
+    prompt-only mode, relying on the encoded curriculum.
+\end{itemize}
+
+The distance thresholds (1.2 and 1.6) were determined empirically by
+analyzing the distribution of retrieval distances across a sample of typical
+student queries. The hybrid engine is implemented as a composition of the
+RAG engine (for retrieval) and the prompt-only engine (for curriculum
+encoding), without modifying either component.

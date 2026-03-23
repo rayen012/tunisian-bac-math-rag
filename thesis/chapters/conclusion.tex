@@ -1,0 +1,54 @@
+% =============================================================================
+%  CHAPTER 6 — CONCLUSION (< 1 page)
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Summary}
+\label{subsec:summary}
+
+This thesis presented the design, implementation, and evaluation of a
+Retrieval-Augmented Generation system for the Tunisian Baccalaureate
+mathematics examination. We developed a complete pipeline from raw document
+digitization through vector indexing to interactive answer generation, and
+compared three approaches: a RAG system grounded in retrieved curriculum
+documents, a prompt-only baseline relying on encoded syllabus knowledge, and
+a hybrid engine that dynamically routes between the two based on retrieval
+confidence.
+
+% TODO: Add 2-3 sentences summarizing key findings from experiments.
+% e.g., "Our experiments showed that [key finding 1] and [key finding 2]."
+
+The system addresses a practical gap in educational technology for Tunisian
+secondary school students, providing the first AI tutoring tool specifically
+designed for the Tunisian Bac mathematics curriculum and its distinctive
+correction style.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Future Work}
+\label{subsec:future-work}
+
+Several directions for future work emerge from this thesis:
+
+\begin{enumerate}
+    \item \textbf{User evaluation}: Conducting a study with actual Tunisian
+    Bac students to assess the system's pedagogical effectiveness in
+    practice.
+
+    \item \textbf{Automated evaluation}: Developing automated metrics for
+    mathematical correctness and style adherence, potentially using LLM-as-judge
+    approaches.
+
+    \item \textbf{Corpus expansion}: Extending the corpus to cover all
+    Baccalaureate sections (Sciences, Technique, \'{E}conomie) and additional
+    years of past examinations.
+
+    \item \textbf{Fine-tuning}: Exploring fine-tuning of the embedding model
+    on Tunisian Bac mathematical content to improve retrieval quality for
+    domain-specific terminology.
+
+    \item \textbf{Interactive features}: Adding step-by-step guided problem
+    solving, where the system reveals the solution incrementally rather than
+    presenting the full correction at once.
+\end{enumerate}
