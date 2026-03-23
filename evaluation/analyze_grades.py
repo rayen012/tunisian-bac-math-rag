@@ -2,19 +2,19 @@
 """
 analyze_grades.py
 -----------------
-After your teachers have filled in the grading_template.json, run this script
-to unblind the results and produce thesis-ready analysis.
+After your teacher has filled in grading_template.json and
+guardrail_evaluation.json, run this script to unblind and analyze.
 
 Outputs:
-  - Per-system average scores across all 6 criteria
+  - Per-system average scores across 4 criteria (0-5 each)
+  - Simple mean per system (unweighted average of 4 criteria)
   - Per-category breakdown (A vs B vs C vs D)
-  - Per-criterion comparison table (LaTeX-ready)
-  - Guardrail pass/fail summary
-  - Statistical significance notes
+  - LaTeX-ready comparison table for thesis
+  - Guardrail pass/fail summary (unblinded)
 
 Usage:
   python evaluation/analyze_grades.py
-  python evaluation/analyze_grades.py --grades evaluation/results/grading_template_filled.json
+  python evaluation/analyze_grades.py --grades evaluation/results/grading_template.json
 """
 
 import argparse
@@ -26,36 +26,46 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Criterion weights (same as in generate_grading_sheets.py)
-WEIGHTS = {
-    "mathematical_correctness": 5,
-    "formal_rigor": 5,
-    "bac_style_alignment": 3,
-    "clarity_and_structure": 3,
-    "pedagogical_quality": 2,
-    "hallucination_penalty": 2,
+# The 4 evaluation criteria (must match generate_grading_sheets.py)
+CRITERIA = [
+    "mathematical_correctness",
+    "reasoning_clarity",
+    "pedagogical_quality",
+    "bac_style_adherence",
+]
+
+CRITERIA_LABELS = {
+    "mathematical_correctness": "Mathematical Correctness",
+    "reasoning_clarity": "Reasoning Clarity",
+    "pedagogical_quality": "Pedagogical Quality",
+    "bac_style_adherence": "Bac Style Adherence",
 }
-TOTAL_WEIGHT = sum(WEIGHTS.values())  # = 20
+
+SYSTEMS = ["RAG", "PROMPT_ONLY", "HYBRID"]
 
 
-def load_and_unblind(grades_path: Path, key_path: Path):
-    """Load filled grades and unblind using the answer key."""
-    with open(grades_path, "r", encoding="utf-8") as f:
-        grades_data = json.load(f)
+def load_answer_key(key_path: Path) -> dict:
+    """Load answer key and build lookup: question_id → {blind_label → real_system}."""
     with open(key_path, "r", encoding="utf-8") as f:
         answer_key = json.load(f)
 
-    # Build lookup: question_id → {blind_label → real_system}
-    key_lookup = {}
+    lookup = {}
     for entry in answer_key:
         qid = entry["question_id"]
-        key_lookup[qid] = {
+        lookup[qid] = {
             "Système X": entry["Système X"],
             "Système Y": entry["Système Y"],
             "Système Z": entry["Système Z"],
+            "category": entry.get("category", ""),
         }
+    return lookup
 
-    # Unblind: attach real system names to each grade
+
+def load_and_unblind_grades(grades_path: Path, key_lookup: dict) -> list:
+    """Load filled grades and unblind using the answer key."""
+    with open(grades_path, "r", encoding="utf-8") as f:
+        grades_data = json.load(f)
+
     unblinded = []
     for eval_entry in grades_data["evaluations"]:
         qid = eval_entry["question_id"]
@@ -75,46 +85,42 @@ def load_and_unblind(grades_path: Path, key_path: Path):
     return unblinded
 
 
-def compute_weighted_score(scores: dict) -> float:
-    """Compute weighted total score (out of 20) from individual criterion scores."""
-    total = 0
-    for criterion, weight in WEIGHTS.items():
-        raw = scores.get(criterion)
-        if raw is not None:
-            # Each criterion is scored 0-5, weight determines how much of /20 it gets
-            total += (raw / 5.0) * weight
-    return round(total, 2)
+def compute_mean(scores: dict) -> float:
+    """Compute simple (unweighted) mean of scored criteria, out of 5."""
+    values = [v for k, v in scores.items() if k in CRITERIA and v is not None]
+    if not values:
+        return 0.0
+    return round(sum(values) / len(values), 2)
 
 
 def analyze(unblinded: list):
-    """Produce all analysis tables."""
-    # ── Per-system averages ──
+    """Produce all analysis tables from unblinded grades."""
     system_scores = defaultdict(lambda: defaultdict(list))
-    system_totals = defaultdict(list)
+    system_means = defaultdict(list)
 
     for entry in unblinded:
         sys_name = entry["system"]
-        for criterion, score in entry["scores"].items():
+        for criterion in CRITERIA:
+            score = entry["scores"].get(criterion)
             if score is not None:
                 system_scores[sys_name][criterion].append(score)
-        weighted = compute_weighted_score(entry["scores"])
-        system_totals[sys_name].append(weighted)
+        mean = compute_mean(entry["scores"])
+        system_means[sys_name].append(mean)
 
+    # ── Per-system per-criterion averages ──
     print("\n" + "=" * 70)
-    print("  UNBLINDED RESULTS — Per-System Average Scores")
+    print("  UNBLINDED RESULTS — Per-System Average Scores (0-5)")
     print("=" * 70)
 
-    # Header
-    systems = ["RAG", "PROMPT_ONLY", "HYBRID"]
     header = f"  {'Criterion':<30s}"
-    for s in systems:
+    for s in SYSTEMS:
         header += f"  {s:>12s}"
     print(header)
     print("  " + "─" * 66)
 
-    for criterion in WEIGHTS:
-        row = f"  {criterion:<30s}"
-        for s in systems:
+    for criterion in CRITERIA:
+        row = f"  {CRITERIA_LABELS[criterion]:<30s}"
+        for s in SYSTEMS:
             vals = system_scores[s][criterion]
             if vals:
                 avg = sum(vals) / len(vals)
@@ -124,29 +130,32 @@ def analyze(unblinded: list):
         print(row)
 
     print("  " + "─" * 66)
-    row = f"  {'WEIGHTED TOTAL (/20)':<30s}"
-    for s in systems:
-        vals = system_totals[s]
+    row = f"  {'MEAN (unweighted)':<30s}"
+    for s in SYSTEMS:
+        vals = system_means[s]
         if vals:
             avg = sum(vals) / len(vals)
-            row += f"  {avg:>11.2f}/20"
+            row += f"  {avg:>10.2f}/5"
         else:
             row += f"  {'N/A':>12s}"
     print(row)
 
+    n_questions = len(system_means[SYSTEMS[0]]) if system_means[SYSTEMS[0]] else 0
+    print(f"\n  Based on {n_questions} graded questions (categories A-D).")
+
     # ── Per-category breakdown ──
     print("\n\n" + "=" * 70)
-    print("  Per-Category Weighted Scores (/20)")
+    print("  Per-Category Mean Scores (0-5, unweighted)")
     print("=" * 70)
 
     from evaluation.eval_questions import EVAL_QUESTIONS
     qid_to_cat = {q["id"]: q["category"] for q in EVAL_QUESTIONS}
 
-    cat_scores = defaultdict(lambda: defaultdict(list))
+    cat_means = defaultdict(lambda: defaultdict(list))
     for entry in unblinded:
         cat = qid_to_cat.get(entry["question_id"], "?")
-        weighted = compute_weighted_score(entry["scores"])
-        cat_scores[cat][entry["system"]].append(weighted)
+        mean = compute_mean(entry["scores"])
+        cat_means[cat][entry["system"]].append(mean)
 
     cat_labels = {
         "A": "Direct Bac-style",
@@ -155,7 +164,7 @@ def analyze(unblinded: list):
         "D": "Derja / mixed",
     }
     header = f"  {'Category':<25s}"
-    for s in systems:
+    for s in SYSTEMS:
         header += f"  {s:>12s}"
     print(header)
     print("  " + "─" * 61)
@@ -163,11 +172,11 @@ def analyze(unblinded: list):
     for cat in "ABCD":
         label = cat_labels.get(cat, cat)
         row = f"  {cat}: {label:<20s}"
-        for s in systems:
-            vals = cat_scores[cat][s]
+        for s in SYSTEMS:
+            vals = cat_means[cat][s]
             if vals:
                 avg = sum(vals) / len(vals)
-                row += f"  {avg:>11.2f}/20"
+                row += f"  {avg:>10.2f}/5"
             else:
                 row += f"  {'N/A':>12s}"
         print(row)
@@ -179,8 +188,9 @@ def analyze(unblinded: list):
     print(r"""
 \begin{table}[H]
 \centering
-\caption{Human evaluation results: average scores per criterion (0--5 scale) and
-weighted total (/20). Scores are averaged across all graded questions (categories A--D).
+\caption{Human evaluation results: average scores per criterion (0--5 scale)
+and unweighted mean, as assessed by a Tunisian Baccalaureate mathematics teacher
+through blind grading of system outputs (categories A--D).
 Higher is better for all criteria.}
 \label{tab:human-evaluation}
 \begin{tabular}{lrrr}
@@ -188,28 +198,28 @@ Higher is better for all criteria.}
 \textbf{Criterion} & \textbf{RAG} & \textbf{Prompt-Only} & \textbf{Hybrid} \\
 \midrule""")
 
-    for criterion, weight in WEIGHTS.items():
-        label = criterion.replace("_", " ").title()
+    for criterion in CRITERIA:
+        label = CRITERIA_LABELS[criterion]
         vals = []
-        for s in systems:
+        for s in SYSTEMS:
             v = system_scores[s][criterion]
             vals.append(f"{sum(v)/len(v):.2f}" if v else "N/A")
-        print(f"{label} (w={weight}) & {vals[0]} & {vals[1]} & {vals[2]} \\\\")
+        print(f"{label} & {vals[0]} & {vals[1]} & {vals[2]} \\\\")
 
     print(r"\midrule")
-    totals = []
-    for s in systems:
-        v = system_totals[s]
-        totals.append(f"{sum(v)/len(v):.2f}" if v else "N/A")
-    print(f"\\textbf{{Weighted Total (/20)}} & \\textbf{{{totals[0]}}} & "
-          f"\\textbf{{{totals[1]}}} & \\textbf{{{totals[2]}}} \\\\")
+    vals = []
+    for s in SYSTEMS:
+        v = system_means[s]
+        vals.append(f"{sum(v)/len(v):.2f}" if v else "N/A")
+    print(f"\\textbf{{Mean}} & \\textbf{{{vals[0]}}} & "
+          f"\\textbf{{{vals[1]}}} & \\textbf{{{vals[2]}}} \\\\")
     print(r"""\bottomrule
 \end{tabular}
 \end{table}""")
 
 
-def analyze_guardrails(guard_path: Path):
-    """Analyze guardrail pass/fail results."""
+def analyze_guardrails(guard_path: Path, key_lookup: dict):
+    """Analyze guardrail pass/fail results, unblinding from the answer key."""
     if not guard_path.exists():
         print(f"\n  Guardrail file not found: {guard_path}")
         return
@@ -218,25 +228,55 @@ def analyze_guardrails(guard_path: Path):
         guard_data = json.load(f)
 
     print("\n\n" + "=" * 70)
-    print("  GUARDRAIL RESULTS (Out-of-Scope Questions)")
+    print("  GUARDRAIL RESULTS (Out-of-Scope Questions) — Unblinded")
     print("=" * 70)
 
-    systems = ["RAG", "PROMPT_ONLY", "HYBRID"]
     pass_counts = defaultdict(int)
     total = len(guard_data["evaluations"])
+    blind_labels = ["Système X", "Système Y", "Système Z"]
 
     for entry in guard_data["evaluations"]:
-        print(f"\n  {entry['question_id']}: {entry['question'][:60]}...")
-        for sys_name in systems:
-            verdict = entry["systems"][sys_name].get("verdict", "NOT_GRADED")
+        qid = entry["question_id"]
+        mapping = key_lookup.get(qid, {})
+
+        print(f"\n  {qid}: {entry['question'][:70]}...")
+        for label in blind_labels:
+            real_system = mapping.get(label, "UNKNOWN")
+            answer_data = entry["answers"].get(label, {})
+            verdict = answer_data.get("verdict", "NOT_GRADED")
             symbol = "PASS" if verdict == "PASS" else ("FAIL" if verdict == "FAIL" else "?")
-            print(f"    {sys_name:<15s}: {symbol}")
+            print(f"    {label} ({real_system:<12s}): {symbol}")
             if verdict == "PASS":
-                pass_counts[sys_name] += 1
+                pass_counts[real_system] += 1
 
     print(f"\n  Summary:")
-    for s in systems:
+    for s in SYSTEMS:
         print(f"    {s:<15s}: {pass_counts[s]}/{total} passed")
+
+    # LaTeX guardrail table
+    print(f"\n  LaTeX guardrail table:")
+    print(r"""
+\begin{table}[H]
+\centering
+\caption{Curriculum guardrail results: number of out-of-scope questions
+correctly refused (out of """ + str(total) + r""").}
+\label{tab:guardrail-results}
+\begin{tabular}{lr}
+\toprule
+\textbf{System} & \textbf{Pass Rate} \\
+\midrule""")
+    for s in SYSTEMS:
+        display = s.replace("_", "-").title().replace("Prompt-Only", "Prompt-Only")
+        if s == "PROMPT_ONLY":
+            display = "Prompt-Only"
+        elif s == "RAG":
+            display = "RAG"
+        elif s == "HYBRID":
+            display = "Hybrid"
+        print(f"{display} & {pass_counts[s]}/{total} \\\\")
+    print(r"""\bottomrule
+\end{tabular}
+\end{table}""")
 
 
 def main():
@@ -265,15 +305,16 @@ def main():
 
     if not grades_path.exists():
         print(f"Grading template not found: {grades_path}")
-        print("Ask your teachers to fill in the template first.")
+        print("Ask your teacher to fill in the template first.")
         sys.exit(1)
     if not key_path.exists():
         print(f"Answer key not found: {key_path}")
         sys.exit(1)
 
-    unblinded = load_and_unblind(grades_path, key_path)
+    key_lookup = load_answer_key(key_path)
+    unblinded = load_and_unblind_grades(grades_path, key_lookup)
     analyze(unblinded)
-    analyze_guardrails(guard_path)
+    analyze_guardrails(guard_path, key_lookup)
 
 
 if __name__ == "__main__":
