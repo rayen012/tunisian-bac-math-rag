@@ -9,32 +9,198 @@ variants developed in this thesis: the RAG system
 (Section~\ref{sec:rag-system}), the prompt-only baseline
 (Section~\ref{sec:prompt-only}), and the hybrid engine
 (Section~\ref{sec:hybrid}). We first present an overview of the overall
-architecture, then detail each component.
+architecture and end-to-end pipeline, then detail each component in the
+subsequent subsections.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{System Overview}
 \label{subsec:system-overview}
 
-Figure~\ref{fig:system-architecture} illustrates the complete system
-architecture. The pipeline consists of three phases: (1)~data preparation
-(digitization and indexing), (2)~query processing (retrieval and generation),
-and (3)~user interface.
+The system follows the canonical Retrieval-Augmented Generation (RAG)
+architecture introduced by Lewis~et~al.~\cite{lewis2020rag}, in which a
+retrieval component supplies relevant external knowledge to a generative
+language model at inference time, thereby grounding its outputs in
+verifiable sources rather than relying solely on parametric
+knowledge~\cite{gao2024rag_survey}. In our implementation, this architecture
+is instantiated as a five-stage pipeline specifically tailored to the
+Tunisian Baccalaureate mathematics domain. Figure~\ref{fig:system-architecture}
+provides a schematic overview of the complete pipeline.
 
-% TODO: Add architecture diagram
-% \begin{figure}[H]
-%     \centering
-%     \includegraphics[width=\textwidth]{figures/architecture.pdf}
-%     \caption{System architecture showing the data pipeline (top), the three
-%     generation approaches (center), and the Streamlit interface (bottom).}
-%     \label{fig:system-architecture}
-% \end{figure}
+% ── Pipeline diagram (TikZ) ─────────────────────────────────────────────────
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.2cm and 1.8cm,
+    stage/.style={rectangle, draw=black!70, fill=blue!8, rounded corners=4pt,
+                  minimum width=3.2cm, minimum height=1.1cm, align=center,
+                  font=\small\bfseries},
+    comp/.style={rectangle, draw=black!50, fill=white, rounded corners=2pt,
+                 minimum width=2.6cm, minimum height=0.8cm, align=center,
+                 font=\small},
+    arrow/.style={->, >=stealth, thick, draw=black!60},
+    label/.style={font=\footnotesize\itshape, text=black!60},
+]
 
-All three system variants share the same Gemini model for generation, the
-same temperature and token settings, and the same system persona
-(``Monsieur Tounsi''). The only difference is how each variant constructs
-the prompt: the RAG system includes retrieved documents, the prompt-only
-system includes an encoded curriculum, and the hybrid system dynamically
-selects between the two based on retrieval confidence.
+% ── Stage 1: Data Acquisition ──
+\node[stage] (acq) {Stage 1\\Data Acquisition};
+\node[comp, below=0.5cm of acq] (scan) {Scanned exams,\\series, cours};
+
+% ── Stage 2: Digitization ──
+\node[stage, right=2cm of acq] (dig) {Stage 2\\Digitization};
+\node[comp, below=0.5cm of dig] (gemini_ocr) {Gemini multimodal\\OCR $\to$ \LaTeX{}};
+
+% ── Stage 3: Indexing ──
+\node[stage, right=2cm of dig] (idx) {Stage 3\\Indexing};
+\node[comp, below=0.5cm of idx] (chunk) {Adaptive chunking\\+ BGE-M3 embedding};
+\node[comp, below=0.4cm of chunk] (chroma) {ChromaDB\\vector store};
+
+% ── Stage 4: Retrieval ──
+\node[stage, right=2cm of idx] (ret) {Stage 4\\Retrieval};
+\node[comp, below=0.5cm of ret] (twostage) {Two-stage retrieval\\+ companion fetch};
+
+% ── Stage 5: Generation ──
+\node[stage, right=2cm of ret] (gen) {Stage 5\\Generation};
+\node[comp, below=0.5cm of gen] (llm) {Gemini LLM\\``Monsieur Tounsi''};
+
+% ── Arrows ──
+\draw[arrow] (acq) -- node[above, label] {images/PDF} (dig);
+\draw[arrow] (dig) -- node[above, label] {.tex files} (idx);
+\draw[arrow] (idx) -- node[above, label] {vectors} (ret);
+\draw[arrow] (ret) -- node[above, label] {context} (gen);
+
+% ── Vertical arrows ──
+\draw[arrow] (scan) -- (acq);
+\draw[arrow] (gemini_ocr) -- (dig);
+\draw[arrow] (chunk) -- (idx);
+\draw[arrow] (chroma) -- (chunk);
+\draw[arrow] (twostage) -- (ret);
+\draw[arrow] (llm) -- (gen);
+
+% ── Student query ──
+\node[comp, above=0.8cm of ret, fill=green!10, draw=green!50!black]
+    (query) {Student query};
+\draw[arrow, draw=green!50!black] (query) -- (ret);
+
+% ── Answer output ──
+\node[comp, above=0.8cm of gen, fill=red!8, draw=red!50!black]
+    (answer) {Grounded answer\\with sources};
+\draw[arrow, draw=red!50!black] (gen) -- (answer);
+
+% ── Offline / Online labels ──
+\draw[dashed, gray] ([xshift=0.9cm]idx.east |- acq.north) ++(0,1.2)
+    -- ++(0,-5.5) node[below, font=\footnotesize\bfseries, text=gray]
+    {offline $\mid$ online};
+
+\end{tikzpicture}%
+}
+\caption{End-to-end pipeline of the RAG system. Stages~1--3 (left of the
+dashed line) are executed offline during corpus preparation. Stages~4--5
+(right) are executed online at query time. The student's question triggers
+a two-stage retrieval over the pre-built vector store, and the retrieved
+context is compiled into a prompt for the Gemini language model, which
+produces a grounded answer in the Tunisian Baccalaureate redaction style.}
+\label{fig:system-architecture}
+\end{figure}
+
+\subsubsection{Pipeline Stages}
+
+The five stages of the pipeline are summarized below, with references to the
+detailed subsections that follow.
+
+\paragraph{Stage~1: Data Acquisition (Section~\ref{subsec:data-acquisition}).}
+The corpus is assembled from three categories of Tunisian Baccalaureate
+mathematics material: corrected past official examinations
+(\textit{bac\_officiel}), chapter-based exercise series with worked
+corrections (\textit{série}), and course notes with theorem statements
+(\textit{cours}). A deliberate design decision was to acquire each exercise
+\textit{together with its correction} as a single logical unit, preserving
+the paired structure that is fundamental to mathematical
+pedagogy~\cite{zhao2024financial_chunking, chen2024mog}. The final corpus
+comprises 624 source files spanning 20 chapters of the Baccalaureate
+mathematics program (Section Mathématiques).
+
+\paragraph{Stage~2: Digitization (Section~\ref{subsec:digitization}).}
+Because the source material consists of scanned images and PDF files, a
+digitization step converts each document into machine-readable \LaTeX{} text.
+We use Google Gemini as a multimodal OCR engine, prompting it to faithfully
+transcribe both the natural-language text and the mathematical expressions
+while preserving the official Tunisian redaction
+style~\cite{wang2023ocrbench, mathpix2024}. The digitization pipeline is
+incremental and resume-friendly: previously processed files are detected via
+companion \texttt{.tex} files in Google Cloud Storage and skipped on
+subsequent runs.
+
+\paragraph{Stage~3: Indexing (Section~\ref{subsec:database-construction}).}
+The digitized \LaTeX{} files are normalized, split into chunks using an
+\textit{adaptive chunking strategy} that adjusts chunk size based on document
+type (1{,}500 characters for corrections, 3{,}000 for course material), and
+embedded into dense vectors using the BGE-M3 multilingual embedding
+model~\cite{chen2024bge_m3}. Each chunk is annotated with rich metadata
+(document type, chapter, year, session, exercise identifier, solution flag)
+extracted from the file path structure. The resulting 1{,}422 chunks and
+their embeddings are stored in ChromaDB~\cite{chromadb2024}, a persistent
+vector database with native metadata filtering support. An incremental
+manifest mechanism ensures that only modified files are re-embedded on
+subsequent indexing runs.
+
+\paragraph{Stage~4: Two-Stage Retrieval
+(Section~\ref{subsec:retrieval-engine}).}
+When a student submits a question, the retrieval engine executes a
+\textit{two-stage} similarity search over the vector store. The first pass
+targets correction-type documents (\texttt{is\_solution=true}), seeking
+worked examples whose redaction style the language model can
+mimic~\cite{karpukhin2020dpr}. If no sufficiently similar correction is
+found (based on L2 distance thresholds calibrated empirically), a second pass
+retrieves course material to provide theorem-level backing. A companion
+fetch mechanism then locates the exercise statement corresponding to each
+retrieved correction, ensuring that the language model receives the complete
+exercise--correction pair as context~\cite{gao2024rag_survey}. This
+two-stage design reflects the pedagogical distinction between ``knowing the
+theory'' and ``knowing how to write a Baccalaureate-style solution,'' and
+is a key architectural contribution of this work.
+
+\paragraph{Stage~5: Generation
+(Section~\ref{subsec:retrieval-engine}).}
+The retrieved documents are compiled into a structured prompt alongside the
+student's question and a system persona (``Monsieur Tounsi,'' a veteran
+Tunisian mathematics teacher). The prompt enforces anti-hallucination rules,
+syllabus boundary constraints, and the formal redaction conventions of the
+Tunisian Baccalaureate~\cite{kasneci2023chatgpt_education}. Generation is
+performed by Google Gemini via the Vertex AI API, with a low temperature
+($T = 0.15$) to favor deterministic mathematical
+reasoning~\cite{team2023gemini}. The final answer is accompanied by a
+confidence level (high, medium, or low) computed from retrieval quality
+metrics, and full source transparency is provided through an expandable
+panel listing the retrieved documents and their metadata.
+
+\subsubsection{Shared Infrastructure Across System Variants}
+
+All three system variants evaluated in this thesis—the RAG system, the
+prompt-only baseline, and the hybrid engine—share the same underlying
+infrastructure:
+
+\begin{itemize}
+    \item The same generative model (Google Gemini, accessed through
+    Vertex AI) with identical temperature ($T = 0.15$) and maximum output
+    token settings (4{,}096 tokens).
+    \item The same system persona (``Monsieur Tounsi'') with the same
+    syllabus guard, redaction conventions, and anti-hallucination
+    constraints.
+    \item The same Streamlit-based user interface, providing a bilingual
+    chat interface (French and Tunisian Arabic) with source transparency
+    and optional debug observability.
+\end{itemize}
+
+The \textit{only} difference between the three variants is how each
+constructs the context portion of the prompt: the RAG system includes
+retrieved documents from the vector store, the prompt-only baseline encodes
+the curriculum directly into the system prompt through ten specialized prompt
+components, and the hybrid engine dynamically selects between the two
+strategies based on retrieval confidence (Section~\ref{sec:hybrid}). This
+controlled design ensures that any performance difference observed in the
+evaluation (Section~\ref{sec:experiments}) can be attributed to the retrieval
+mechanism rather than to confounding factors in the generation pipeline.
 
 % ─────────────────────────────────────────────────────────────────────────────
 % Include the existing detailed RAG methods section
