@@ -205,17 +205,54 @@ def guess_doc_type(blob_name: str) -> str:
 def detect_is_solution(blob_name: str) -> bool:
     """Check if the path indicates a solution/correction document.
 
-    Also detects Bac correction files in 'Bac_avec_corrections_Images/'
-    and correction files inside 'series_et_corrections/' whose filenames
-    contain 'corr' or 'sol' markers.
+    Detection strategy:
+      1. Filename-level: look for _sol or _corr markers in the filename
+         itself (handles both ``S1_EX1_sol_1.jpg.tex`` and
+         ``S1_Ex1_sol (2).tex``).
+      2. Path-level: explicit solution sub-folders (``_Sol/``, ``/sol/``)
+         or the ``Bac_avec_corrections_Images/`` tree.
+
+    NOTE: We intentionally do NOT match the word "correction" in the full
+    path because the folder ``series_et_corrections/`` contains both
+    exercises and solutions — matching on the folder name would flag
+    every file as a solution.
     """
     n = blob_name.lower()
-    indicators = [
-        "_sol/", "_sol.", "_sol_", "/sol/",
-        "corrig", "correction", "_corr/", "_corr.",
-        "bac_avec_corrections",
-    ]
-    return any(ind in n for ind in indicators)
+    filename = os.path.basename(n)
+
+    # ── Filename-level checks ──────────────────────────────────
+    # Regex: _sol followed by word boundary, dot, space, underscore, or end
+    if re.search(r"_sol(?=[\s_.(]|$)", filename):
+        return True
+    if re.search(r"[\b_]corr(?:ig|ection|\.)", filename):
+        return True
+
+    # ── Path-level checks ──────────────────────────────────────
+    if "_sol/" in n or "/sol/" in n:
+        return True
+    if "bac_avec_corrections" in n:
+        return True
+
+    return False
+
+
+def extract_exercise_key(blob_name: str) -> str:
+    """Extract a normalised exercise identifier from series filenames.
+
+    Handles both naming conventions:
+      New:  S1_EX1_enonce_1.jpeg.tex  →  S1_EX1
+            S1_EX1_sol_2.jpg.tex      →  S1_EX1
+      Old:  S1_Ex1.tex                →  S1_EX1
+            S1_Ex1_sol.tex            →  S1_EX1
+            S1_Ex1_sol (2).tex        →  S1_EX1
+
+    Returns an uppercase key like ``S1_EX1`` or empty string if no match.
+    """
+    filename = os.path.basename(blob_name)
+    m = re.search(r"(S\d+_EX?\d+)", filename, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    return ""
 
 
 def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
@@ -275,6 +312,7 @@ def extract_metadata(blob_name: str) -> Dict[str, str]:
     bac = parse_bac_tokens(blob_name)
     group_id = extract_group_id(blob_name)
     is_sol = detect_is_solution(blob_name)
+    ex_key = extract_exercise_key(blob_name)
 
     return {
         "type": doc_type,
@@ -284,6 +322,7 @@ def extract_metadata(blob_name: str) -> Dict[str, str]:
         "is_solution": str(is_sol).lower(),   # "true"/"false" as string for Chroma
         "chapter": chapter,
         "group_id": group_id,
+        "exercise_key": ex_key,               # e.g. "S1_EX1" — links énoncé ↔ correction
         "filename": os.path.basename(blob_name),
         "blob_name": blob_name,
         "source": f"gs://{BUCKET_NAME}/{blob_name}",
