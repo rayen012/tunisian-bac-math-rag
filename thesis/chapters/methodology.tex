@@ -214,72 +214,324 @@ mechanism rather than to confounding factors in the generation pipeline.
 \subsection{Prompt-Only Baseline}
 \label{sec:prompt-only}
 
-The prompt-only baseline serves as a control condition: it uses the same
-Gemini model and persona but receives no retrieved documents. Instead, it
-encodes the Tunisian Bac mathematics curriculum directly into the system
-prompt through ten specialized prompt components:
+% NOTE on citations:
+% - brown2020gpt3: in-context learning / prompting as baseline
+% - wei2022chain_of_thought: chain-of-thought reasoning in prompts
+% - white2023prompt_patterns: structured prompt engineering patterns
+% - kasneci2023chatgpt_education: LLMs in education
+% - team2023gemini: Gemini model
+% Uncited (implementation-specific): 10-component structure, curriculum
+% inventory content, Sandwich Tounsi, keyword confidence heuristic.
 
-\begin{enumerate}
-    \item \textbf{System persona}: Establishes the ``Monsieur Tounsi''
-    identity with curriculum boundaries.
+\subsubsection{Role and Rationale}
 
-    \item \textbf{Instruction structure}: Defines the expected answer format
-    with numbered steps and formal French mathematical phrasing.
+The prompt-only baseline is a zero-retrieval system that serves as a control
+condition in our experimental design. It receives the same student question
+and generates an answer using the same Gemini model, the same temperature
+($T = 0.15$), and the same output budget (4{,}096 tokens) as the RAG system,
+but it never queries the vector store. Its entire knowledge of the Tunisian
+Baccalaureate curriculum is encoded directly in the system prompt.
 
-    \item \textbf{Reasoning guardrails}: Explicitly forbids methods outside
-    the Bac program (e.g., L'H\^{o}pital's rule, Lebesgue integration).
+The rationale for including this baseline is straightforward. Recent work has
+shown that large language models already possess substantial parametric
+knowledge of standard mathematical
+topics~\cite{brown2020gpt3, team2023gemini}, and that carefully structured
+prompts can elicit reasoning chains that rival more complex
+pipelines~\cite{wei2022chain_of_thought}. Without a prompt-only baseline, we
+cannot distinguish the contribution of the retrieval component from what the
+language model could have produced on its own. The prompt-only system
+therefore answers a specific question: \textit{how much does retrieval add
+compared to prompting alone, given a state-of-the-art generative model?}
 
-    \item \textbf{Output formatting}: Specifies LaTeX-in-Markdown rendering
-    conventions.
+To make this comparison fair, the baseline shares as much infrastructure as
+possible with the RAG system. Both use the same ``Monsieur Tounsi'' persona,
+the same syllabus guard, the same output format, and the same interaction
+modes (correction and coaching). The public API is also identical: both
+expose a \texttt{query(question, mode)} method that returns a structured
+result object with timings, confidence, and metadata. The only difference
+is the source of domain knowledge: retrieved documents versus an in-prompt
+curriculum specification.
 
-    \item \textbf{Hallucination control}: Instructs the model to refuse
-    rather than fabricate if unsure about curriculum boundaries.
 
-    \item \textbf{Syllabus guard}: Lists the exact chapters and topics in
-    the Bac Math program.
+\subsubsection{Prompt Architecture}
 
-    \item \textbf{Self-verification}: Requires the model to verify each step
-    against curriculum constraints before outputting.
+The system prompt is organized into ten functional components that are
+concatenated into a single prompt string at inference time. This modular
+decomposition follows the principle of \textit{prompt
+patterns}~\cite{white2023prompt_patterns}, where each component addresses a
+distinct concern and can be tested or modified independently.
 
-    \item \textbf{Self-check block}: Adds an internal consistency check at
-    the end of each answer.
+\begin{description}
+    \item[Component~1: System persona.] Defines ``Monsieur Tounsi'' as a
+    veteran Tunisian mathematics teacher with 20+ years of Baccalaureate
+    preparation experience. This persona framing was chosen to steer the
+    model toward domain-appropriate register and vocabulary, following
+    evidence that role-based prompts improve task
+    adherence~\cite{white2023prompt_patterns}.
 
-    \item \textbf{Refusal policy}: Defines clear refusal messages for
-    out-of-scope queries.
+    \item[Component~2: Curriculum inventory.] Enumerates all ten chapters of
+    the Section Mathématiques program with their specific topics—from
+    suites numériques through logarithme and exponentielle. This is the
+    core knowledge-bearing component. Without retrieval, the model must rely
+    on its parametric memory for mathematical content; the curriculum
+    inventory constrains \textit{which} content it should draw on.
+    The specific inventory was compiled from the official Tunisian
+    Baccalaureate program and verified against the source material in
+    our corpus. This is an implementation-specific artifact, not derived
+    from any published dataset.
 
-    \item \textbf{Confidence calibration}: Maps the model's internal
-    certainty to explicit confidence labels.
-\end{enumerate}
+    \item[Component~3: Reasoning guardrails.] Defines a six-step mental
+    checklist (identify, recall, verify, plan, solve, check) that the model
+    must follow internally before producing output. This component draws on
+    the chain-of-thought prompting paradigm~\cite{wei2022chain_of_thought},
+    adapted here as an explicit procedural scaffold rather than a few-shot
+    example.
 
-This baseline tests the hypothesis that a sufficiently detailed prompt can
-compensate for the absence of retrieved documents. By comparing it against
-the RAG system, we can isolate the value added by retrieval.
+    \item[Component~4: Output structure.] Specifies the six-part answer
+    format (identification, rappel du cours, méthode, application,
+    conclusion, vérification) and the \LaTeX{} rendering conventions. Both
+    interaction modes—\textit{correction} (dry exam-style) and
+    \textit{coaching} (pedagogical)—use this structure, though coaching mode
+    adds explanatory annotations and a ``pour aller plus loin'' section.
+
+    \item[Component~5: Hallucination control.] Because there is no
+    retrieved context to anchor the answer, this component is deliberately
+    more aggressive than in the RAG system. It instructs the model to never
+    cite specific exercise numbers or manual page references unless it is
+    certain they exist, and to prefer general statements (``this type of
+    exercise appears regularly in the Bac'') over fabricated specifics. This
+    is an implementation-specific choice motivated by early testing, where
+    we observed the model occasionally inventing plausible-sounding but
+    nonexistent exam references.
+
+    \item[Component~6: Syllabus guard.] Lists methods that are explicitly
+    outside the Baccalaureate program (L'Hôpital's rule, Taylor series,
+    matrix diagonalization, Laplace/Fourier transforms, improper integrals,
+    and several others) and instructs the model to refuse these with a
+    polite redirect to the Bac-compatible alternative.
+
+    \item[Component~7: Derja sandwich.] Specifies that each answer should
+    open and close with a short motivational phrase in Tunisian Arabic
+    (Derja), with the mathematical body in formal academic French. This
+    ``sandwich'' convention reflects how Tunisian teachers actually interact
+    with students—it is a cultural pedagogical norm, not a published
+    technique.
+
+    \item[Component~8: Self-verification block.] Requires the model to add
+    a visible verification section at the end of each answer (e.g.,
+    ``On vérifie : $f(x_0) = \ldots$ \checkmark''). The purpose is
+    twofold: it forces the model to check its own computation, and it
+    teaches the student a verification habit.
+
+    \item[Component~9: Refusal policy.] Defines explicit refusal behavior
+    for questions outside the scope of Bac mathematics, requests to generate
+    exam papers, or questions targeting a different educational level.
+
+    \item[Component~10: Confidence calibration.] Maps the model's
+    self-assessed certainty to three labels (fort, moyen, faible), displayed
+    at the end of each answer. Without retrieval distances as a signal, the
+    model must rely on the question's characteristics to estimate
+    confidence—a limitation discussed below.
+\end{description}
+
+This ten-component architecture is entirely an implementation-specific
+design. We are not aware of a published reference that decomposes
+mathematical tutoring prompts in exactly this way. The decomposition
+emerged iteratively during development as we identified failure modes
+(curriculum violations, hallucinated references, inconsistent formatting)
+and added targeted prompt components to address each one.
+
+
+\subsubsection{Confidence Estimation Without Retrieval}
+
+A notable limitation of the prompt-only baseline is the absence of retrieval
+quality signals. In the RAG system, confidence is computed from the L2
+distance of the best-matching document and the volume of retrieved context
+(Section~\ref{subsec:retrieval-engine}). The prompt-only system has no such
+signals.
+
+As a pragmatic workaround, we implemented a keyword-based heuristic: if the
+question contains terms strongly associated with standard Bac exercise types
+(e.g., ``récurrence'', ``limite'', ``intégrale'', ``PGCD'', ``Bézout''),
+the system reports high confidence on the assumption that the model's
+parametric knowledge of these standard topics is likely adequate. Very short
+or ambiguous questions receive low confidence. All other cases default to
+medium.
+
+This heuristic is deliberately simple and is presented as an
+implementation-specific approximation, not a principled confidence
+calibration method. Its primary purpose is to provide a comparable
+confidence signal for the evaluation framework, which grades all three
+systems on the same rubric.
+
+
+\subsubsection{Limitations as a Baseline}
+
+The prompt-only system makes a strong bet: that the language model's
+parametric knowledge, guided by a structured prompt, is sufficient to
+produce correct Bac-style solutions. In practice, we expected this to work
+reasonably well for standard, frequently-asked exercise types that are
+well-represented in the model's pretraining data, and to degrade for less
+common topics or for exercises requiring the exact notation and method
+conventions of the Tunisian program. The evaluation
+(Section~\ref{sec:experiments}) tests whether this expectation holds.
+
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Hybrid Engine}
 \label{sec:hybrid}
 
-The hybrid engine combines the strengths of both approaches through a
-confidence-based routing mechanism. It operates in three cases:
+% NOTE on citations:
+% - yan2024practical_rag (CRAG): corrective RAG with retrieval quality assessment
+% - asai2023self_rag: self-RAG with adaptive retrieve-or-not decisions
+% - gao2024rag_survey: discusses adaptive retrieval strategies
+% - lewis2020rag: original RAG
+% Uncited (implementation-specific): three-case routing, thresholds (1.2/1.6),
+% Case B confidence cap, companion doc filtering in routing.
+
+\subsubsection{Motivation}
+
+The RAG system and the prompt-only baseline represent two extremes. The RAG
+system always retrieves and always conditions its answer on the retrieved
+context, even when retrieval returns poor matches. The prompt-only system
+never retrieves and relies entirely on the model's parametric knowledge, even
+when highly relevant corrections exist in the corpus. Neither strategy is
+optimal across all queries.
+
+This observation is not unique to our system. Recent work on adaptive
+retrieval has shown that the decision of \textit{whether} to retrieve—and
+how much to trust the retrieved results—can be as important as the retrieval
+mechanism itself. Yan~et~al.~\cite{yan2024practical_rag} propose Corrective
+RAG (CRAG), which evaluates retrieval quality and triggers corrective actions
+(web search or regeneration) when the initial retrieval is
+unsatisfactory. Asai~et~al.~\cite{asai2023self_rag} introduce Self-RAG,
+where the language model itself decides whether retrieval is needed for a
+given query and can critique its own output against the retrieved passages.
+Both approaches share the insight that a static retrieval policy is
+suboptimal.
+
+The hybrid engine in this thesis implements a simpler version of this idea,
+adapted to our specific constraints. Rather than training a retrieval
+critic or adding a web search fallback, we route each query to one of three
+generation strategies based on the L2 distance of the best-retrieved
+document—a signal that is already available from the retrieval pipeline
+at no additional cost.
+
+
+\subsubsection{Adaptive Routing Logic}
+
+The hybrid engine is not a separate system with its own retrieval
+pipeline. It is implemented as a thin routing layer on top of the existing
+RAG engine: it calls the same two-stage retrieval
+(Section~\ref{subsec:retrieval-engine}), receives the same set of
+candidate documents with their L2 distances, and then decides which
+generation strategy to apply. The routing function examines the distance
+of the best-matching document among the \textit{real} similarity search
+results, excluding companion documents (which have a synthetic distance
+marker and should not influence the quality assessment). Three cases are
+distinguished:
+
+\begin{description}
+    \item[Case~A: Strong retrieval] (best distance $\leq 1.2$).
+    The query closely matches one or more corrections in the corpus. The
+    system uses the same RAG-grounded generation strategy described in
+    Section~\ref{subsec:retrieval-engine}: the system prompt instructs the
+    model to use \textit{only} the retrieved context, to mimic the
+    redaction style of the retrieved corrections, and to cite sources
+    explicitly. Anti-hallucination and anti-injection rules are enforced
+    as in the standalone RAG system.
+
+    \item[Case~B: Partial retrieval] ($1.2 <$ best distance $\leq 1.6$).
+    The retrieval found documents that share a chapter or exercise type with
+    the query but do not closely match its specific content. Rather than
+    discarding these partially relevant documents (as a strict threshold
+    policy would), the system includes them in the context \textit{and}
+    supplements the system prompt with the full curriculum inventory and
+    syllabus guard from the prompt-only component. The model is instructed
+    to use the documents when pertinent, to complement them with its
+    curriculum knowledge where gaps exist, and to signal clearly which parts
+    of its answer come from retrieved sources (``D'après la Source~X\ldots'')
+    and which from the official program (``D'après le programme
+    officiel\ldots''). This explicit source attribution is an
+    implementation-specific requirement designed to maintain transparency
+    when two knowledge sources are mixed.
+
+    \item[Case~C: No useful retrieval] (best distance $> 1.6$, or no
+    documents returned).
+    The retrieval produced nothing relevant. The system discards all
+    retrieved documents and falls back to the prompt-only strategy, using
+    the same system prompt, curriculum inventory, and hallucination controls
+    as the standalone prompt-only baseline.
+\end{description}
+
+This three-case design can be understood as a discrete approximation of
+the retrieval quality assessment in CRAG~\cite{yan2024practical_rag}, where
+a continuous confidence score determines whether to accept, refine, or
+discard the retrieval results. Our implementation uses two fixed thresholds
+instead of a learned classifier, which is simpler but requires manual
+calibration.
+
+
+\subsubsection{Threshold Determination}
+
+The two distance thresholds that define the case boundaries—1.2 for the
+Case~A/B boundary and 1.6 for the Case~B/C boundary—are the same
+thresholds used in the standalone RAG engine's two-stage retrieval
+(Section~\ref{subsec:retrieval-engine}). They were determined empirically
+by examining the distribution of L2 distances returned by BGE-M3 across a
+range of test queries during development. Documents below 1.2 consistently
+corresponded to corrections that were genuinely relevant; documents above
+1.6 were typically on unrelated topics; the intermediate range produced
+partial matches.
+
+We make the same caveat here as in the RAG section: these thresholds are
+not theoretically grounded or claimed to generalize beyond our specific
+corpus and embedding model. They are implementation-specific parameters that
+would require recalibration if the embedding model, corpus content, or
+document domain were changed.
+
+
+\subsubsection{Confidence Management}
+
+The confidence signal in the hybrid engine depends on the routing case:
 
 \begin{itemize}
-    \item \textbf{Case~A} (best retrieval distance $\leq 1.2$): The query
-    closely matches existing exercises in the corpus. The system uses
-    RAG-grounded generation with strong anti-hallucination constraints,
-    instructing the model to closely follow the retrieved correction style.
-
-    \item \textbf{Case~B} ($1.2 <$ best distance $\leq 1.6$): The query
-    partially matches the corpus. The system combines retrieved context with
-    curriculum knowledge from the prompt-only component, allowing the model
-    to supplement weak retrievals with parametric knowledge.
-
-    \item \textbf{Case~C} (best distance $> 1.6$ or no results): The query
-    has no good match in the corpus. The system falls back entirely to
-    prompt-only mode, relying on the encoded curriculum.
+    \item In \textbf{Case~A}, confidence is computed using the same
+    retrieval-based formula as the standalone RAG system (distance
+    and context volume).
+    \item In \textbf{Case~B}, confidence is capped at ``moyen'' (medium),
+    regardless of other signals. This cap is a deliberate design choice: if
+    the retrieval quality was insufficient to trigger Case~A, the system
+    should not claim high confidence merely because it supplemented weak
+    documents with parametric knowledge. The cap prevents false assurance
+    when the answer is partially grounded and partially generated.
+    \item In \textbf{Case~C}, confidence falls back to the keyword-based
+    heuristic from the prompt-only baseline.
 \end{itemize}
 
-The distance thresholds (1.2 and 1.6) were determined empirically by
-analyzing the distribution of retrieval distances across a sample of typical
-student queries. The hybrid engine is implemented as a composition of the
-RAG engine (for retrieval) and the prompt-only engine (for curriculum
-encoding), without modifying either component.
+The Case~B confidence cap (\texttt{HYBRID\_CASE\_B\_MAX\_CONFIDENCE =
+"moyen"}) is stored as a configuration parameter and can be adjusted, but
+in our evaluation it remained fixed at medium. This is an
+implementation-specific decision based on the observation that mixed-source
+answers are inherently less reliable than fully grounded ones.
+
+
+\subsubsection{Relationship to Adaptive Retrieval Literature}
+
+The hybrid engine's routing mechanism occupies a middle ground in the
+adaptive retrieval landscape. Compared to CRAG~\cite{yan2024practical_rag},
+which can trigger external web searches when retrieval fails, our system
+is closed: it only has access to the corpus and the model's parametric
+knowledge, with no external fallback. Compared to
+Self-RAG~\cite{asai2023self_rag}, which trains the language model to emit
+special retrieval and critique tokens, our routing is a simple distance
+threshold check that requires no model modification or additional training.
+
+This simplicity is appropriate for a bachelor thesis system with a fixed,
+domain-specific corpus. The key contribution is not the routing mechanism
+per se—which is deliberately minimal—but the observation that even a
+simple quality-aware routing policy can avoid the failure modes of both
+pure-RAG (forcing generation from irrelevant context) and pure-prompting
+(ignoring relevant retrieved material when it exists). Whether this holds
+in practice is tested in the evaluation
+(Section~\ref{sec:experiments}).
