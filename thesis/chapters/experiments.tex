@@ -87,74 +87,213 @@ all experiments.
 \subsection{Evaluation Methodology}
 \label{subsec:evaluation-methodology}
 
-Evaluating an AI tutoring system for mathematics is inherently challenging
-because correctness requires verifying both mathematical validity and
-stylistic adherence. We employ a multi-dimensional evaluation approach.
+Evaluating an AI tutoring system for mathematics is inherently challenging.
+Unlike natural language generation tasks where automated metrics like BLEU
+or ROUGE can serve as rough proxies, mathematical correctness requires
+verifying logical validity, computational accuracy, and adherence to
+domain-specific conventions that no automated metric captures
+reliably~\cite{kasneci2023chatgpt_education}. We therefore designed a
+blind human evaluation protocol centered on expert judgment from a
+practicing Tunisian Baccalaureate mathematics teacher.
 
-\subsubsection{Evaluation Dimensions}
+\subsubsection{Question Bank}
 
-We evaluate each system variant along four dimensions:
+The evaluation used 20 questions distributed across five categories, each
+designed to probe a different aspect of system behavior:
 
-\begin{enumerate}
-    \item \textbf{Mathematical correctness}: Does the answer contain correct
-    mathematical reasoning and computations?
-
-    \item \textbf{Curriculum fidelity}: Does the answer stay within the
-    Tunisian Bac program boundaries, using only permitted methods and
-    theorems?
-
-    \item \textbf{Style adherence}: Does the answer follow the Tunisian
-    correction redaction conventions (formal French phrasing, structured
-    proof layout)?
-
-    \item \textbf{Retrieval quality} (RAG and hybrid only): Are the
-    retrieved documents relevant to the query? Do retrieval scores reflect
-    actual relevance?
-\end{enumerate}
-
-\subsubsection{Test Queries}
-
-% TODO: Define and list test queries
-We constructed a set of test queries covering:
 \begin{itemize}
-    \item Questions directly from past Bac exams (to test retrieval of
-    matching corrections)
-    \item Novel questions on Bac topics (to test generalization)
-    \item Questions on topics close to but outside the Bac program (to test
-    curriculum guardrails)
-    \item Questions in Tunisian Derja (to test language robustness)
+    \item \textbf{Category~A} (5 questions): Direct Bac-style exercises
+    closely resembling real examination problems. These questions are
+    likely to have near-exact matches in the corpus, testing whether the
+    RAG system can retrieve and leverage relevant corrections.
+
+    \item \textbf{Category~B} (5 questions): Novel chapter-based exercises
+    on the same Bac topics but with different numbers, formulations, or
+    problem structures. These test whether the systems can generalize
+    beyond memorized examples.
+
+    \item \textbf{Category~C} (3 questions): Informal student-style
+    questions written as a real Tunisian student might type them—incomplete
+    phrasing, colloquial French, conceptual rather than computational. These
+    test pedagogical quality and coaching ability.
+
+    \item \textbf{Category~D} (2 questions): Questions in Tunisian Arabic
+    (Derja) or mixed French-Derja, testing language robustness and the
+    system's ability to handle code-switching.
+
+    \item \textbf{Category~E} (4 questions): Out-of-scope questions
+    requesting methods explicitly outside the Tunisian Bac program
+    (L'Hôpital's rule, matrix diagonalization, Taylor series, Lebesgue
+    integration). These test the curriculum guardrail mechanism. Unlike
+    categories A--D, these are evaluated on a binary pass/fail basis rather
+    than a graded rubric.
 \end{itemize}
 
-% TODO: Add a table of test queries here
+Categories A through D (15 questions) were evaluated using a four-criterion
+grading rubric. Category~E (4 questions) was evaluated separately as a
+guardrail test.
+
+\subsubsection{Grading Rubric}
+
+Each of the 15 graded questions was scored independently for each system
+on four criteria, each on a 0--5 scale:
+
+\begin{enumerate}
+    \item \textbf{Mathematical correctness} (0--5): Are the computations and
+    reasoning steps mathematically valid? A score of 0 indicates entirely
+    incorrect or absurd content; 5 indicates a fully correct solution.
+
+    \item \textbf{Reasoning clarity} (0--5): Is the reasoning clear, logical,
+    and well-structured? Are the steps easy to follow?
+
+    \item \textbf{Pedagogical quality} (0--5): Does the answer help the
+    student understand the method, not merely obtain the result? Does it
+    have educational value beyond a bare computation?
+
+    \item \textbf{Bac style adherence} (0--5): Does the answer resemble an
+    official Tunisian Baccalaureate correction? Does it use the formal
+    conventions (``On a\ldots'', ``Donc\ldots'', ``D'après\ldots''),
+    academic French, and the expected level of detail?
+\end{enumerate}
+
+The four criteria are equally weighted. No composite score was imposed
+during grading; the teacher scored each criterion independently.
+
+\subsubsection{Blind Evaluation Protocol}
+
+To prevent evaluator bias, we implemented a fully blind grading procedure.
+For each question, the three system outputs (RAG, Prompt-Only, Hybrid) were
+randomly shuffled and presented under anonymous labels (Système~X, Système~Y,
+Système~Z). The shuffling was performed per question using a fixed random
+seed, so the mapping between anonymous labels and real system names varied
+from one question to the next. The evaluator did not know which label
+corresponded to which system at any point during grading.
+
+The anonymous answer sheets and empty grading templates were generated
+programmatically from the evaluation results and provided to the evaluator
+as printable documents. After grading was complete, the answer key was used
+to unmask the system identities and compute per-system statistics.
+
+\subsubsection{Evaluator}
+
+The evaluation was conducted by a single experienced Tunisian Baccalaureate
+mathematics teacher. This evaluator was selected for domain expertise: deep
+familiarity with the Bac correction conventions, the official curriculum
+boundaries, and the pedagogical expectations of the Section Mathématiques
+program. The limitation of relying on a single evaluator is acknowledged in
+Section~\ref{subsec:limitations}.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Results}
 \label{subsec:results}
 
-% TODO: Fill in results from evaluation notebooks
-% (test_rag.ipynb, test_hybrid.ipynb, test_prompt_only.ipynb)
+This section reports the outcomes of the blind evaluation. Interpretation
+and explanation of these results are deferred to the Discussion
+(Section~\ref{sec:discussion}).
 
-\subsubsection{Retrieval Quality Analysis}
+\subsubsection{Overall System Comparison}
 
-% TODO: Analyze retrieval distances, show distribution
-% - How many queries fall in Case A, B, C?
-% - What are typical retrieval distances?
-% - Show examples of good and bad retrievals
+Table~\ref{tab:human-evaluation} presents the average scores across all 15
+graded questions (categories A--D) for each criterion and system.
 
-\subsubsection{System Comparison}
+\begin{table}[H]
+\centering
+\caption{Blind human evaluation: average scores per criterion (0--5 scale),
+as assessed by a Tunisian Baccalaureate mathematics teacher across 15
+questions (categories A--D). Higher is better.}
+\label{tab:human-evaluation}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Criterion} & \textbf{RAG} & \textbf{Prompt-Only} & \textbf{Hybrid} \\
+\midrule
+Mathematical Correctness & 3.53 & 4.73 & 3.40 \\
+Reasoning Clarity        & 3.47 & 4.67 & 3.53 \\
+Pedagogical Quality      & 2.93 & 4.13 & 3.00 \\
+Bac Style Adherence      & 2.93 & 3.73 & 3.07 \\
+\midrule
+\textbf{Mean (unweighted)} & \textbf{3.22} & \textbf{4.32} & \textbf{3.25} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-% TODO: Compare the three systems across the four evaluation dimensions
-% Table format recommended:
-% | Query | RAG score | Prompt-Only score | Hybrid score | Notes |
+The Prompt-Only baseline received the highest scores on all four criteria.
+Its overall mean (4.32/5) exceeded both the RAG system (3.22/5) and the
+Hybrid engine (3.25/5) by more than one full point. The RAG and Hybrid
+systems scored within 0.03 points of each other overall.
 
-\subsubsection{Qualitative Examples}
+Among the four criteria, Bac Style Adherence received the lowest scores
+across all three systems, with the RAG system and Hybrid scoring below 3.1.
+Pedagogical Quality showed a similar pattern: only the Prompt-Only system
+exceeded 4.0 on this dimension. Mathematical Correctness and Reasoning
+Clarity were the two strongest criteria for all systems, with the
+Prompt-Only baseline approaching near-perfect scores (4.73 and 4.67
+respectively).
 
-% TODO: Show 2-3 concrete examples of queries and responses from each system
-% Focus on:
-% 1. A query where RAG clearly outperforms (exercise with matching correction)
-% 2. A query where prompt-only works well (general curriculum question)
-% 3. A query showing hybrid routing in action
 
-% NOTE TO SELF: Do NOT explain the results here. Just present them.
-% Explanation goes in the Discussion section.
+\subsubsection{Per-Category Breakdown}
+
+Table~\ref{tab:per-category} shows the unweighted mean across all four
+criteria, broken down by question category.
+
+\begin{table}[H]
+\centering
+\caption{Per-category mean scores (unweighted average of all four criteria,
+0--5 scale). Categories: A = direct Bac-style, B = novel chapter-based,
+C = informal student questions, D = Derja/mixed language.}
+\label{tab:per-category}
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Cat.} & \textbf{Description} & \textbf{RAG} & \textbf{Prompt-Only} & \textbf{Hybrid} \\
+\midrule
+A & Direct Bac-style        & 3.25 & 4.35 & 3.05 \\
+B & Novel chapter-based     & 3.00 & 4.00 & 3.30 \\
+C & Student informal        & 3.33 & 4.75 & 2.92 \\
+D & Derja / mixed           & 3.50 & 4.38 & 4.12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Several patterns are visible. The Prompt-Only system scored highest in every
+category. Its strongest performance was on Category~C (informal student
+questions, 4.75/5), suggesting that the coaching mode and pedagogical prompt
+components were particularly effective for conceptual, non-computational
+questions.
+
+Category~D (Derja/mixed language) produced the smallest gap between systems:
+the Hybrid engine scored 4.12, within 0.26 points of the Prompt-Only
+system (4.38). This was also the category where the Hybrid engine most
+clearly outperformed the RAG system (4.12 vs.\ 3.50).
+
+Category~B (novel questions) was the weakest category for the RAG system
+(3.00), and the only category where the Hybrid engine (3.30) scored
+noticeably above the RAG system.
+
+
+\subsubsection{Curriculum Guardrail Results}
+
+All four out-of-scope questions (Category~E) were evaluated on a binary
+pass/fail basis: a system passes if it refuses to apply the forbidden method
+or explicitly warns that it is outside the Bac program.
+
+\begin{table}[H]
+\centering
+\caption{Curriculum guardrail results: number of out-of-scope questions
+correctly refused (out of 4). A pass means the system refused the
+forbidden method or explicitly flagged it as hors programme.}
+\label{tab:guardrail-results}
+\begin{tabular}{lr}
+\toprule
+\textbf{System} & \textbf{Pass Rate} \\
+\midrule
+RAG         & 4/4 \\
+Prompt-Only & 4/4 \\
+Hybrid      & 4/4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All three systems correctly refused all four out-of-scope requests. The
+forbidden methods tested were L'Hôpital's rule, matrix diagonalization,
+Taylor series, and Lebesgue integration. In each case, every system either
+refused outright or redirected the student to the Bac-compatible alternative.

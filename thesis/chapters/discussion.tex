@@ -4,60 +4,261 @@
 \section{Discussion}
 \label{sec:discussion}
 
-% IMPORTANT: Your supervisor explicitly said:
-%   "Here I want to see that you understand the results of your script
-%    and that you can embed them into the greater context of the related work"
-%
-% This chapter is where YOU show your understanding. Write this yourself.
-% Structure suggestion:
+The blind evaluation produced a clear ranking: the Prompt-Only baseline
+outperformed both the RAG system and the Hybrid engine on every criterion
+and in every question category. This section examines why these results
+emerged, what they imply about the value of retrieval in this domain, and
+what limitations constrain the conclusions that can be drawn.
+
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Interpretation of Results}
 \label{subsec:interpretation}
 
-% TODO: Explain WHY the results make sense (or are surprising).
-% For each finding from the Experiments section, provide an explanation.
-% Connect to related work where relevant.
-%
-% Example structure:
-% - "The RAG system outperformed prompt-only on [specific dimension] because..."
-% - "The hybrid routing threshold of 1.2 proved effective because..."
-% - "Surprisingly, the prompt-only baseline performed well on [X] because..."
+\subsubsection{Why the Prompt-Only Baseline Performed Best}
+
+The most striking result is that the system with no retrieval at all
+received the highest scores on all four criteria. Three factors likely
+contribute to this outcome.
+
+First, the generative model used in all three systems—Gemini
+2.5~Flash~\cite{team2023gemini}—is a state-of-the-art large language model
+trained on a broad multilingual corpus that almost certainly includes
+substantial French-language mathematical content. Standard Tunisian
+Baccalaureate topics (complex numbers, integration by parts, sequences and
+convergence, probability) are well-represented in the mathematical
+literature and in online educational resources. For these standard topics,
+the model's parametric knowledge is likely sufficient to produce correct
+solutions without external retrieval. This aligns with observations by
+Brown~et~al.~\cite{brown2020gpt3} that large language models internalize
+considerable factual and procedural knowledge during pretraining.
+
+Second, the Prompt-Only system operates without the constraint of
+conditioning on retrieved context. The RAG system's anti-hallucination
+instructions explicitly tell the model to use \textit{only} the retrieved
+documents. When the retrieved context is incomplete—a correction that
+covers only part of the exercise, or a course excerpt that lacks the
+specific theorem needed—this constraint forces the model to work within a
+limited and potentially misleading context rather than drawing on its full
+parametric knowledge. The Prompt-Only system faces no such constraint: it
+can freely combine its knowledge of the curriculum with its general
+mathematical competence.
+
+Third, the ten-component prompt architecture
+(Section~\ref{sec:prompt-only}) provides structured guidance without
+constraining the knowledge source. The curriculum inventory tells the model
+\textit{what topics} to cover; the reasoning guardrails tell it
+\textit{how to structure} its reasoning; the hallucination controls tell it
+\textit{when to express uncertainty}. These instructions steer the model
+effectively without the overhead and potential noise of retrieval.
+
+
+\subsubsection{Why RAG and Hybrid Scored Lower}
+
+The RAG system's lower scores suggest that, at the current corpus scale
+(1{,}422 chunks across 20 chapters), retrieval introduces more noise than
+signal for many queries. Several mechanisms may explain this.
+
+The corpus, while carefully curated, covers a finite set of past
+examinations and exercise series. For questions that do not closely match
+any document in the corpus—either because the specific problem variant is
+absent or because the question uses different notation—the retrieval
+pipeline returns partially relevant documents that share a chapter or topic
+but not the specific exercise. In Case~A of the RAG system, these
+partially relevant documents are presented as authoritative context, and
+the model is instructed to follow them closely. If the retrieved correction
+solves a different variant of the problem, the model may produce a confused
+or hybrid answer that neither faithfully reproduces the retrieved solution
+nor cleanly solves the actual question.
+
+The Hybrid engine scored nearly identically to the standalone RAG system
+(3.25 vs.\ 3.22), suggesting that the adaptive routing mechanism did not
+substantially mitigate this problem. One likely reason is that most queries
+fell into Case~A (best distance $\leq 1.2$), where the Hybrid engine
+behaves identically to the RAG system. The Hybrid engine's distinctive
+behavior occurs only in Case~B (partial match) and Case~C (no match),
+which may have been triggered for too few of the 15 graded questions to
+shift the overall average.
+
+The one notable exception is Category~D (Derja/mixed language), where the
+Hybrid engine scored 4.12 compared to the RAG system's 3.50. Queries in
+Tunisian Arabic are unlikely to match French-language corpus documents
+closely, which would push them into Case~B or Case~C of the routing logic.
+In these cases, the Hybrid engine supplements weak retrieval with the
+embedded curriculum inventory, which appears to have been beneficial.
+
+
+\subsubsection{Per-Category Observations}
+
+Category~C (informal student questions) showed the largest gap between
+the Prompt-Only system (4.75) and the retrieval-based systems (RAG 3.33,
+Hybrid 2.92). These coaching-mode questions ask for conceptual
+explanations rather than computational solutions. The corpus contains
+primarily worked exam corrections, not pedagogical explanations, so
+retrieval is unlikely to surface useful material for this type of query.
+The Prompt-Only system, unconstrained by irrelevant retrieved context,
+could generate pedagogical responses freely.
+
+Category~B (novel questions) was the only category where the Hybrid engine
+(3.30) outperformed the RAG system (3.00) by a meaningful margin. Novel
+questions are, by design, not present in the corpus, so retrieval quality
+is expected to be poor. The Hybrid engine's ability to fall back to
+curriculum-encoded knowledge in Cases~B and~C may have helped here, though
+the difference is modest.
+
+The guardrail results (4/4 for all systems) confirm that the syllabus guard
+mechanism works as intended regardless of the retrieval strategy. Since all
+three systems share the same forbidden-method list in their system prompts,
+this result is expected.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Value of Retrieval for Curriculum-Specific Tasks}
 \label{subsec:value-of-retrieval}
 
-% TODO: Discuss when retrieval helps and when it doesn't.
-% Connect to Lewis et al.'s original RAG findings and the broader
-% RAG survey by Gao et al.
+These results do not imply that retrieval-augmented generation is without
+value for educational mathematics tutoring. They suggest, more narrowly,
+that \textit{with the current corpus size, embedding model, and generative
+model combination}, retrieval did not provide a net benefit over careful
+prompt engineering.
+
+The original RAG framework~\cite{lewis2020rag} was designed for
+knowledge-intensive tasks where the answer depends on specific facts that
+the language model is unlikely to have memorized—rare entities, recent
+events, or domain-specific data. The Tunisian Baccalaureate mathematics
+curriculum, while specific in its conventions, covers standard mathematical
+content that a large language model has likely encountered during
+pretraining. The domain specificity lies less in the \textit{mathematical
+content} (which is universal) and more in the \textit{redaction style,
+curriculum boundaries, and examination conventions} (which are specific to
+Tunisia). This distinction may explain why the Bac Style Adherence
+criterion showed the smallest performance gap between the Prompt-Only
+system (3.73) and the retrieval-based systems (RAG 2.93, Hybrid 3.07):
+style is precisely the dimension where retrieved corrections should add
+the most value, and indeed the absolute gap is widest here, suggesting
+retrieval may have actively interfered with style rather than helping it.
+
+Gao~et~al.~\cite{gao2024rag_survey} observe in their survey of RAG systems
+that retrieval quality depends heavily on corpus coverage and embedding
+alignment: a RAG system with poor retrieval can perform worse than the
+base model alone, because irrelevant context misleads the generator. Our
+results are consistent with this observation. The corpus of 1{,}422 chunks
+is small by RAG standards, and the BGE-M3 embedding model, while
+multilingual, was not fine-tuned on mathematical or Tunisian educational
+content.
+
+A larger corpus with broader coverage—more years of examinations, more
+exercise series, more correction variants—might shift the balance in
+favor of retrieval by reducing the frequency of partial or irrelevant
+matches. Similarly, fine-tuning the embedding model on Tunisian Bac
+mathematical text could improve retrieval precision at the critical
+boundary between relevant and irrelevant documents. These remain open
+questions for future work.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Limitations}
 \label{subsec:limitations}
 
-% TODO: Be honest about limitations. This shows maturity and understanding.
-% Suggested limitations to discuss:
+Several limitations constrain the generality of these findings.
 
-% 1. Corpus coverage: Not all chapters/years are equally represented
-% 2. Evaluation methodology: No automated mathematical correctness checker
-% 3. Digitization quality: OCR errors propagate through the pipeline
-% 4. Language limitations: System primarily handles French, limited Derja
-% 5. Generalization: System is specific to Tunisian Bac Math; adapting to
-%    other curricula would require new corpora
-% 6. LLM dependency: Results depend on the specific Gemini model version
-%    and may change with model updates
-% 7. No user study: We did not evaluate with actual Tunisian Bac students
+\subsubsection{Single Evaluator}
+
+The most significant limitation is that the entire evaluation was conducted
+by a single teacher. While this evaluator has deep domain expertise in
+Tunisian Baccalaureate mathematics, a single rater cannot capture the full
+range of pedagogical preferences and grading standards. Different teachers
+may weigh mathematical rigor versus pedagogical clarity differently, or may
+have varying tolerance for stylistic deviations from the official
+correction format. Inter-rater reliability, which would require at least
+two independent evaluators, could not be assessed in this study. The
+results should therefore be interpreted as one expert's assessment rather
+than a consensus judgment.
+
+\subsubsection{Sample Size}
+
+The evaluation covered 15 graded questions across four categories. While
+these questions were designed to span the curriculum and test different
+query types, 15 questions is a small sample for drawing strong statistical
+conclusions. The per-category breakdowns (5, 5, 3, and 2 questions
+respectively) are too small for meaningful significance testing. The
+observed differences—particularly the Hybrid engine's relative strength
+on Category~D (2 questions)—should be treated as suggestive rather than
+conclusive.
+
+\subsubsection{Corpus Scale}
+
+The evaluation was conducted with a corpus of 1{,}422 chunks derived from
+624 source files. This is a modest corpus by RAG standards. The performance
+of the RAG and Hybrid systems is likely sensitive to corpus size: a
+substantially larger corpus could improve retrieval quality and potentially
+change the relative ranking of the systems. Our results reflect the
+specific corpus available at the time of evaluation, not an inherent
+limitation of retrieval-augmented approaches.
+
+\subsubsection{Model Dependency}
+
+All three systems use Gemini 2.5~Flash as the generative model. A different
+model—particularly a smaller or less capable one—might lack the parametric
+mathematical knowledge that allows the Prompt-Only baseline to perform well,
+potentially favoring retrieval-augmented approaches. The results are
+specific to this model and cannot be assumed to hold for other language
+models.
+
+\subsubsection{No Student Evaluation}
+
+This evaluation measured answer quality as judged by an expert teacher, not
+learning outcomes for students. A system that produces technically correct
+answers may not be the most effective for student learning; conversely, a
+system with lower mathematical accuracy but better pedagogical scaffolding
+might produce better learning outcomes. Evaluating actual student learning
+would require a user study with Tunisian Baccalaureate students, which was
+outside the scope of this thesis.
+
+\subsubsection{Digitization Quality}
+
+The corpus was digitized using Gemini as a multimodal OCR engine
+(Section~\ref{subsec:digitization}). While we manually verified a sample
+of the digitized outputs, OCR errors in mathematical notation—a misread
+exponent, a dropped minus sign, a garbled fraction—can propagate into the
+vector store and corrupt the retrieved context. Such errors would
+disproportionately affect the RAG and Hybrid systems, which rely on
+retrieved content, while leaving the Prompt-Only system unaffected.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Comparison with Related Work}
 \label{subsec:comparison-related-work}
 
-% TODO: Place your results in the context of related work.
-% How does this system compare to:
-% - General-purpose RAG systems?
-% - Other AI-in-education approaches?
-% - Existing math tutoring systems?
+Direct comparison with existing systems is difficult because, to our
+knowledge, no prior work has built a RAG-based tutoring system specifically
+for the Tunisian Baccalaureate mathematics curriculum. The closest related
+efforts fall into two categories.
+
+General-purpose RAG systems such as those surveyed by
+Gao~et~al.~\cite{gao2024rag_survey} typically operate on large-scale
+knowledge bases (Wikipedia, scientific literature, enterprise documents)
+and target factual question answering rather than mathematical solution
+generation. Our system differs in that the retrieval target is not factual
+information but \textit{stylistic and methodological exemplars}—the goal is
+to find a worked correction whose redaction style the model can mimic, not
+to retrieve facts that the model does not know.
+
+AI-in-education systems such as those reviewed by
+Kasneci~et~al.~\cite{kasneci2023chatgpt_education} have explored LLM-based
+tutoring for various subjects, but typically without the
+retrieval-augmented component and without targeting a specific national
+examination format. Our work contributes the observation that for a
+curriculum with strong stylistic conventions, the choice between retrieval
+and prompt engineering is not straightforward: a well-engineered prompt can
+outperform retrieval when the generative model already possesses the
+relevant mathematical knowledge and the corpus is not large enough to
+provide consistently high-quality matches.
+
+The adaptive retrieval approaches of CRAG~\cite{yan2024practical_rag} and
+Self-RAG~\cite{asai2023self_rag} are architecturally related to our Hybrid
+engine. Our results suggest that even with quality-aware routing, the
+benefit of retrieval is limited when the base model is strong and the
+corpus is small. This observation complements the CRAG and Self-RAG
+findings, which were demonstrated on larger-scale retrieval tasks where
+the base model's parametric knowledge is less likely to suffice.

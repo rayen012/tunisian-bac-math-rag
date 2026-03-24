@@ -10,20 +10,35 @@
 
 This thesis presented the design, implementation, and evaluation of a
 Retrieval-Augmented Generation system for the Tunisian Baccalaureate
-mathematics examination. We developed a complete pipeline from raw document
-digitization through vector indexing to interactive answer generation, and
-compared three approaches: a RAG system grounded in retrieved curriculum
-documents, a prompt-only baseline relying on encoded syllabus knowledge, and
-a hybrid engine that dynamically routes between the two based on retrieval
-confidence.
+mathematics examination (Section Mathématiques). We developed a complete
+pipeline—from physical document acquisition and multimodal OCR digitization
+through adaptive chunking and vector indexing to interactive, bilingual
+answer generation—and compared three system variants: a RAG system grounded
+in retrieved curriculum documents, a prompt-only baseline encoding the
+syllabus directly into the system prompt, and a hybrid engine that
+dynamically routes between the two strategies based on retrieval quality.
 
-% TODO: Add 2-3 sentences summarizing key findings from experiments.
-% e.g., "Our experiments showed that [key finding 1] and [key finding 2]."
+A blind evaluation by a Tunisian Baccalaureate mathematics teacher, grading
+anonymized outputs across 15 questions on four criteria, produced a result
+that ran counter to our initial expectations: the Prompt-Only baseline
+(mean 4.32/5) outperformed both the RAG system (3.22/5) and the Hybrid
+engine (3.25/5) on every criterion. All three systems passed all four
+curriculum guardrail tests, correctly refusing out-of-scope methods. These
+results suggest that, for a domain where the generative model's parametric
+knowledge already covers the mathematical content, and where the retrieval
+corpus is modest in scale, careful prompt engineering can be more effective
+than retrieval augmentation. The value of RAG appears to depend not only on
+the quality of the retrieval pipeline but also on whether the corpus is
+large and precise enough to consistently outperform what the model already
+knows.
 
 The system addresses a practical gap in educational technology for Tunisian
 secondary school students, providing the first AI tutoring tool specifically
 designed for the Tunisian Bac mathematics curriculum and its distinctive
-correction style.
+correction style. The complete pipeline—including the digitized corpus, the
+retrieval engine, and all three system variants—is implemented and
+functional, and can serve as a foundation for future work.
+
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Future Work}
@@ -32,23 +47,39 @@ correction style.
 Several directions for future work emerge from this thesis:
 
 \begin{enumerate}
-    \item \textbf{User evaluation}: Conducting a study with actual Tunisian
-    Bac students to assess the system's pedagogical effectiveness in
-    practice.
+    \item \textbf{Corpus expansion}: The most direct way to test whether
+    retrieval can surpass prompt engineering is to scale the corpus
+    significantly—more years of past examinations, more exercise series, more
+    correction variants across all chapters. A larger, denser corpus would
+    increase the likelihood of retrieving closely matching corrections, which
+    is the scenario where RAG should provide the greatest benefit.
+
+    \item \textbf{Multi-rater evaluation}: Repeating the blind evaluation
+    with multiple independent teachers would allow inter-rater reliability
+    analysis and strengthen the statistical basis of the comparison. A
+    sample of 30--50 graded questions, scored by at least two evaluators,
+    would permit meaningful significance testing.
+
+    \item \textbf{Student user study}: The current evaluation measures answer
+    quality as judged by a teacher. A complementary study with actual
+    Tunisian Baccalaureate students could assess whether the system improves
+    learning outcomes, which is the ultimate measure of a tutoring tool's
+    value.
+
+    \item \textbf{Embedding fine-tuning}: Fine-tuning the BGE-M3 embedding
+    model on Tunisian Bac mathematical text could sharpen retrieval
+    precision at the critical boundary between relevant and irrelevant
+    documents, potentially improving RAG and Hybrid system performance
+    without requiring a larger corpus.
 
     \item \textbf{Automated evaluation}: Developing automated metrics for
-    mathematical correctness and style adherence, potentially using LLM-as-judge
-    approaches.
+    mathematical correctness and style adherence—potentially using an
+    LLM-as-judge approach with a stronger model—would enable larger-scale
+    evaluation without the bottleneck of manual expert grading.
 
-    \item \textbf{Corpus expansion}: Extending the corpus to cover all
-    Baccalaureate sections (Sciences, Technique, \'{E}conomie) and additional
-    years of past examinations.
-
-    \item \textbf{Fine-tuning}: Exploring fine-tuning of the embedding model
-    on Tunisian Bac mathematical content to improve retrieval quality for
-    domain-specific terminology.
-
-    \item \textbf{Interactive features}: Adding step-by-step guided problem
-    solving, where the system reveals the solution incrementally rather than
-    presenting the full correction at once.
+    \item \textbf{Interactive tutoring}: The current system produces
+    complete answers in a single turn. Adding step-by-step guided problem
+    solving, where the system reveals the solution incrementally and
+    responds to student attempts, would move the system from a correction
+    generator toward an interactive tutor.
 \end{enumerate}
