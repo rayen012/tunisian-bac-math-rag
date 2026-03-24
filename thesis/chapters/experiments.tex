@@ -297,3 +297,135 @@ All three systems correctly refused all four out-of-scope requests. The
 forbidden methods tested were L'Hôpital's rule, matrix diagonalization,
 Taylor series, and Lebesgue integration. In each case, every system either
 refused outright or redirected the student to the Bac-compatible alternative.
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Digitization Quality Evaluation}
+\label{subsec:ocr-evaluation}
+
+The quality of the RAG system's knowledge base depends directly on the
+accuracy of the digitization pipeline described in
+Section~\ref{subsec:digitization}. Errors introduced during OCR—a misread
+exponent, a dropped minus sign, a garbled fraction—propagate silently into
+the vector store and can corrupt the retrieved context presented to the
+generative model. To quantify this risk, we conducted a ground truth
+evaluation of the Gemini multimodal OCR output against manually corrected
+reference texts.
+
+\subsubsection{Metric Selection}
+
+We report three metrics, each capturing a different dimension of
+digitization fidelity.
+
+\paragraph{Character Error Rate (CER).}
+CER is the standard metric for OCR evaluation~\cite{wang2023ocrbench}. It
+is defined as the character-level Levenshtein edit distance between the OCR
+output and the reference text, normalized by the length of the reference:
+\[
+\text{CER} = \frac{\text{editDistance}(\text{OCR}, \text{ref})}{|\text{ref}|}
+\]
+A CER of 0\% indicates a perfect transcription; a CER of 5\% means that
+roughly one in twenty characters requires correction. CER captures all
+errors equally—whitespace, punctuation, letters, and mathematical
+symbols—without distinguishing their semantic impact.
+
+We chose CER because it is the most widely used metric in the OCR
+literature and allows comparison with published
+benchmarks~\cite{wang2023ocrbench, mahdavi2019icdar_math}. Its main
+limitation is that it treats all character errors equally: a misplaced
+space and a flipped sign in an exponent count the same, even though the
+latter is mathematically catastrophic.
+
+\paragraph{Word Error Rate (WER).}
+WER operates at the word level, computing the Levenshtein distance between
+the tokenized OCR output and the tokenized reference, normalized by the
+reference word count. WER penalizes word-level substitutions, insertions,
+and deletions, and is less sensitive to minor formatting differences
+(extra spaces, line break variations) than CER. It is commonly used in
+speech recognition evaluation and has been adopted for OCR evaluation of
+structured documents.
+
+\paragraph{\LaTeX{} Math Expression Accuracy.}
+Neither CER nor WER distinguishes mathematical content from natural
+language text. A document could have perfect CER on the French prose but
+corrupt every equation, or vice versa. To address this, we compute a
+\LaTeX{}-specific metric: the fraction of math expressions in the
+reference text (delimited by \texttt{\$...\$}, \texttt{\$\$...\$\$},
+\texttt{\textbackslash(...\textbackslash)}, or
+\texttt{\textbackslash[...\textbackslash]}) that appear exactly in the OCR
+output. This metric directly measures what matters most for a mathematical
+RAG system: whether the equations that will be embedded and retrieved are
+faithful to the source material.
+
+This metric is an implementation-specific design. We are not aware of a
+published OCR metric that specifically targets \LaTeX{} math expression
+fidelity, though related work on mathematical expression
+recognition~\cite{mahdavi2019icdar_math} evaluates similar properties at
+the symbol and structure level.
+
+
+\subsubsection{Ground Truth Methodology}
+
+We selected a stratified sample of digitized documents from the corpus,
+aiming to cover the range of document types and difficulty levels present
+in the knowledge base:
+
+\begin{itemize}
+    \item Corrections with dense mathematical notation (complex numbers,
+    integrals)
+    \item Corrections with text-heavy reasoning (proofs, sequence
+    convergence)
+    \item Course material with theorem statements and definitions
+    \item Documents with fractions, summation notation, and multi-line
+    equations (high OCR difficulty)
+    \item Cleanly printed documents (expected low error rate, serving as
+    a baseline)
+\end{itemize}
+
+For each selected document, the Gemini OCR output (\texttt{.tex} file
+from GCS) was paired with a manually corrected reference version. The
+manual correction was performed by the author, consulting the original
+scanned image to resolve any ambiguities. The corrected reference preserves
+the same \LaTeX{} formatting conventions as the OCR output so that the
+comparison measures transcription accuracy rather than stylistic
+preferences.
+
+% ── RESULTS TABLE ──────────────────────────────────────────────────────────
+% TODO: Replace this placeholder with actual results after running:
+%   python evaluation/ocr_ground_truth_eval.py
+%
+% The script will output a LaTeX-ready table. Paste it below.
+
+\begin{table}[H]
+\centering
+\caption{OCR digitization quality: Character Error Rate (CER), Word Error
+Rate (WER), and \LaTeX{} math expression accuracy, measured on a stratified
+sample of ground truth pairs. Lower is better for CER/WER; higher is
+better for \LaTeX{} accuracy.}
+\label{tab:ocr-quality}
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Sample} & \textbf{Doc.\ type} & \textbf{CER (\%)} & \textbf{WER (\%)} & \textbf{\LaTeX{} Acc.\ (\%)} \\
+\midrule
+% ── paste script output rows here ──
+\textit{(run evaluation script)} & & & & \\
+\midrule
+\textbf{Average} & --- & \textbf{TODO} & \textbf{TODO} & \textbf{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Observations}
+
+% TODO: After filling the table, write 2-3 paragraphs:
+% - Overall CER/WER: how accurate is Gemini OCR on this corpus?
+% - Where does it struggle? (handwritten content, dense fractions, etc.)
+% - LaTeX accuracy: are equations generally preserved?
+% - Implications for RAG: does this error rate explain some of the RAG
+%   system's lower performance in the blind evaluation?
+%
+% Example text (replace with actual observations):
+% "The average CER of X.X\% indicates that Gemini's multimodal OCR produces
+% largely faithful transcriptions of printed mathematical documents. However,
+% the LaTeX math accuracy of Y.Y\% reveals that approximately one in Z math
+% expressions contains an error..."
