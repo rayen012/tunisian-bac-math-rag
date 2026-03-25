@@ -43,6 +43,31 @@ from evaluation.eval_questions import EVAL_QUESTIONS
 
 # ── Google Vertex AI Embedding ──────────────────────────────────────────────
 
+
+# Google text-embedding-005 accepts up to 20,000 tokens per input.
+# A safe character limit (~4 chars/token on average for French+LaTeX) ensures
+# no single text exceeds the API ceiling.  This is analogous to BGE-M3's own
+# max_length=8192 tokens — both models see bounded input, keeping the
+# comparison fair.
+GOOGLE_MAX_CHARS = 10_000  # ~2,500 tokens margin below the 20k-token limit
+
+
+def _truncate_for_google(texts: list[str]) -> list[str]:
+    """Truncate texts that exceed the Google embedding token limit."""
+    truncated = 0
+    out = []
+    for t in texts:
+        if len(t) > GOOGLE_MAX_CHARS:
+            out.append(t[:GOOGLE_MAX_CHARS])
+            truncated += 1
+        else:
+            out.append(t)
+    if truncated:
+        print(f"  [truncation] {truncated}/{len(texts)} texts truncated "
+              f"to {GOOGLE_MAX_CHARS:,} chars for Google embedding limit")
+    return out
+
+
 def get_google_embeddings(texts: list[str], task: str = "RETRIEVAL_QUERY") -> list[list[float]]:
     """Embed texts using Google's text-embedding model via Vertex AI.
 
@@ -55,10 +80,12 @@ def get_google_embeddings(texts: list[str], task: str = "RETRIEVAL_QUERY") -> li
     """
     from vertexai.language_models import TextEmbeddingModel
 
+    texts = _truncate_for_google(texts)
     model = TextEmbeddingModel.from_pretrained("text-embedding-005")
-    # Google API supports batches of up to 250 texts
+    # Google API supports batches of up to 250 texts; use smaller batches
+    # to stay safely under per-request size limits.
     all_embeddings = []
-    batch_size = 50
+    batch_size = 20
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
         embeddings = model.get_embeddings(batch, output_dimensionality=768)
