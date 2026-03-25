@@ -1,32 +1,33 @@
-% =============================================================================
-%  CHAPTER 3 — METHODOLOGY (~15-35% of thesis)
-% =============================================================================
-\section{Methodology}
-\label{sec:methodology}
-
+\chapter{Methods}
 This section describes the design and implementation of the three system
 variants developed in this thesis: the RAG system
 (Section~\ref{sec:rag-system}), the prompt-only baseline
 (Section~\ref{sec:prompt-only}), and the hybrid engine
-(Section~\ref{sec:hybrid}). We first present an overview of the overall
-architecture and end-to-end pipeline, then detail each component in the
-subsequent subsections.
+(Section~\ref{sec:hybrid}). It begins with a short overview of the overall
+pipeline and then presents the main components in more detail in the
+following subsections.
 
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{System Overview}
 \label{subsec:system-overview}
 
-The system follows the canonical Retrieval-Augmented Generation (RAG)
-architecture introduced by Lewis~et~al.~\cite{lewis2020rag}, in which a
-retrieval component supplies relevant external knowledge to a generative
-language model at inference time, thereby grounding its outputs in
-verifiable sources rather than relying solely on parametric
-knowledge~\cite{gao2024rag_survey}. In our implementation, this architecture
-is instantiated as a five-stage pipeline specifically tailored to the
-Tunisian Baccalaureate mathematics domain. Figure~\ref{fig:system-architecture}
-provides a schematic overview of the complete pipeline.
+The core system developed in this thesis follows a retrieval-augmented
+generation setup in which a language model is combined with a curated external
+corpus. Instead of relying only on the model's parametric knowledge, the
+system retrieves relevant mathematical material at inference time and provides
+it as context for answer generation. This is particularly useful in the
+present setting, where the goal is not only to produce correct answers, but to
+generate solutions that resemble Tunisian Baccalaureate correction style.
 
-% ── Pipeline diagram (TikZ) ─────────────────────────────────────────────────
+Figure~\ref{fig:system-architecture} shows the overall pipeline. The process
+starts with scanned educational material collected from Tunisian Bac
+mathematics sources. These documents are digitized into \LaTeX, normalized,
+chunked, embedded, and stored in a local vector database. At query time, a
+student question is used to retrieve relevant material from this indexed
+corpus, and the retrieved context is then passed to the generation model.
+
+The implementation can be described in five stages: data acquisition,
+digitization, indexing, retrieval, and generation. 
+
 \begin{figure}[H]
 \centering
 \resizebox{\textwidth}{!}{%
@@ -42,34 +43,27 @@ provides a schematic overview of the complete pipeline.
     label/.style={font=\footnotesize\itshape, text=black!60},
 ]
 
-% ── Stage 1: Data Acquisition ──
 \node[stage] (acq) {Stage 1\\Data Acquisition};
 \node[comp, below=0.5cm of acq] (scan) {Scanned exams,\\series, cours};
 
-% ── Stage 2: Digitization ──
 \node[stage, right=2cm of acq] (dig) {Stage 2\\Digitization};
 \node[comp, below=0.5cm of dig] (gemini_ocr) {Gemini multimodal\\OCR $\to$ \LaTeX{}};
 
-% ── Stage 3: Indexing ──
 \node[stage, right=2cm of dig] (idx) {Stage 3\\Indexing};
-\node[comp, below=0.5cm of idx] (chunk) {Adaptive chunking\\+ BGE-M3 embedding};
+\node[comp, below=0.5cm of idx] (chunk) {Chunking + metadata\\+ embeddings};
 \node[comp, below=0.4cm of chunk] (chroma) {ChromaDB\\vector store};
 
-% ── Stage 4: Retrieval ──
 \node[stage, right=2cm of idx] (ret) {Stage 4\\Retrieval};
 \node[comp, below=0.5cm of ret] (twostage) {Two-stage retrieval\\+ companion fetch};
 
-% ── Stage 5: Generation ──
 \node[stage, right=2cm of ret] (gen) {Stage 5\\Generation};
-\node[comp, below=0.5cm of gen] (llm) {Gemini LLM\\``Monsieur Tounsi''};
+\node[comp, below=0.5cm of gen] (llm) {Gemini LLM};
 
-% ── Arrows ──
-\draw[arrow] (acq) -- node[above, label] {images/PDF} (dig);
-\draw[arrow] (dig) -- node[above, label] {.tex files} (idx);
+\draw[arrow] (acq) -- node[above, label] {images / PDF} (dig);
+\draw[arrow] (dig) -- node[above, label] {\texttt{.tex} files} (idx);
 \draw[arrow] (idx) -- node[above, label] {vectors} (ret);
 \draw[arrow] (ret) -- node[above, label] {context} (gen);
 
-% ── Vertical arrows ──
 \draw[arrow] (scan) -- (acq);
 \draw[arrow] (gemini_ocr) -- (dig);
 \draw[arrow] (chunk) -- (idx);
@@ -77,461 +71,1118 @@ provides a schematic overview of the complete pipeline.
 \draw[arrow] (twostage) -- (ret);
 \draw[arrow] (llm) -- (gen);
 
-% ── Student query ──
 \node[comp, above=0.8cm of ret, fill=green!10, draw=green!50!black]
     (query) {Student query};
 \draw[arrow, draw=green!50!black] (query) -- (ret);
 
-% ── Answer output ──
 \node[comp, above=0.8cm of gen, fill=red!8, draw=red!50!black]
-    (answer) {Grounded answer\\with sources};
+    (answer) {Generated answer};
 \draw[arrow, draw=red!50!black] (gen) -- (answer);
 
-% ── Offline / Online labels ──
 \draw[dashed, gray] ([xshift=0.9cm]idx.east |- acq.north) ++(0,1.2)
     -- ++(0,-5.5) node[below, font=\footnotesize\bfseries, text=gray]
     {offline $\mid$ online};
 
 \end{tikzpicture}%
 }
-\caption{End-to-end pipeline of the RAG system. Stages~1--3 (left of the
-dashed line) are executed offline during corpus preparation. Stages~4--5
-(right) are executed online at query time. The student's question triggers
-a two-stage retrieval over the pre-built vector store, and the retrieved
-context is compiled into a prompt for the Gemini language model, which
-produces a grounded answer in the Tunisian Baccalaureate redaction style.}
+\caption{Overview of the end-to-end pipeline used in the RAG system. }
 \label{fig:system-architecture}
 \end{figure}
 
 \subsubsection{Pipeline Stages}
 
-The five stages of the pipeline are summarized below, with references to the
-detailed subsections that follow.
+The main stages of the pipeline are briefly summarized here before being
+described in detail in the following subsections.
 
-\paragraph{Stage~1: Data Acquisition (Section~\ref{subsec:data-acquisition}).}
-The corpus is assembled from three categories of Tunisian Baccalaureate
-mathematics material: corrected past official examinations
-(\textit{bac\_officiel}), chapter-based exercise series with worked
-corrections (\textit{série}), and course notes with theorem statements
-(\textit{cours}). A deliberate design decision was to acquire each exercise
-\textit{together with its correction} as a single logical unit, preserving
-the paired structure that is fundamental to mathematical
-pedagogy~\cite{zhao2024financial_chunking, chen2024mog}. The final corpus
-comprises 624 source files spanning 20 chapters of the Baccalaureate
-mathematics program (Section Mathématiques).
+\paragraph{Stage 1: Data Acquisition.}
+The corpus was assembled from three main categories of Tunisian Baccalaureate
+mathematics material: official past examinations with corrections, chapterwise
+exercise series with worked solutions, and course material. A central design
+choice was to preserve the link between an exercise and its correction
+whenever possible, since this pairing later proved important for retrieval.
 
-\paragraph{Stage~2: Digitization (Section~\ref{subsec:digitization}).}
-Because the source material consists of scanned images and PDF files, a
-digitization step converts each document into machine-readable \LaTeX{} text.
-We use Google Gemini as a multimodal OCR engine, prompting it to faithfully
-transcribe both the natural-language text and the mathematical expressions
-while preserving the official Tunisian redaction
-style~\cite{wang2023ocrbench, mathpix2024}. The digitization pipeline is
-incremental and resume-friendly: previously processed files are detected via
-companion \texttt{.tex} files in Google Cloud Storage and skipped on
-subsequent runs.
+\paragraph{Stage 2: Digitization.}
+Because the source documents were available mainly as scanned pages or images, they first had to be converted into machine-readable text. For this
+purpose, Gemini was used as a multimodal digitization model to transcribe both
+mathematical notation and surrounding natural-language text into \LaTeX.
 
-\paragraph{Stage~3: Indexing (Section~\ref{subsec:database-construction}).}
-The digitized \LaTeX{} files are normalized, split into chunks using an
-\textit{adaptive chunking strategy} that adjusts chunk size based on document
-type (1{,}500 characters for corrections, 3{,}000 for course material), and
-embedded into dense vectors using the BGE-M3 multilingual embedding
-model~\cite{chen2024bge_m3}. Each chunk is annotated with rich metadata
-(document type, chapter, year, session, exercise identifier, solution flag)
-extracted from the file path structure. The resulting 1{,}422 chunks and
-their embeddings are stored in ChromaDB~\cite{chromadb2024}, a persistent
-vector database with native metadata filtering support. An incremental
-manifest mechanism ensures that only modified files are re-embedded on
-subsequent indexing runs.
+\paragraph{Stage 3: Indexing.}
+The digitized files were normalized, split into chunks, enriched with
+metadata, embedded using BGE-M3, and stored in ChromaDB. This stage created
+the searchable vector store used later during inference.
 
-\paragraph{Stage~4: Two-Stage Retrieval
-(Section~\ref{subsec:retrieval-engine}).}
-When a student submits a question, the retrieval engine executes a
-\textit{two-stage} similarity search over the vector store. The first pass
-targets correction-type documents (\texttt{is\_solution=true}), seeking
-worked examples whose redaction style the language model can
-mimic~\cite{karpukhin2020dpr}. If no sufficiently similar correction is
-found (based on L2 distance thresholds calibrated empirically), a second pass
-retrieves course material to provide theorem-level backing. A companion
-fetch mechanism then locates the exercise statement corresponding to each
-retrieved correction, ensuring that the language model receives the complete
-exercise--correction pair as context~\cite{gao2024rag_survey}. This
-two-stage design reflects the pedagogical distinction between ``knowing the
-theory'' and ``knowing how to write a Baccalaureate-style solution,'' and
-is a key architectural contribution of this work.
+\paragraph{Stage 4: Retrieval.}
+When a student submits a question, the system retrieves relevant material from
+the vector database. The retrieval process follows a two-stage strategy: it
+first searches for worked corrections and then, when needed, supplements these
+with course material. If a correction is selected, the corresponding exercise
+statement is also fetched whenever possible.
 
-\paragraph{Stage~5: Generation
-(Section~\ref{subsec:retrieval-engine}).}
-The retrieved documents are compiled into a structured prompt alongside the
-student's question and a system persona (``Monsieur Tounsi,'' a veteran
-Tunisian mathematics teacher). The prompt enforces anti-hallucination rules,
-syllabus boundary constraints, and the formal redaction conventions of the
-Tunisian Baccalaureate~\cite{kasneci2023chatgpt_education}. Generation is
-performed by Google Gemini via the Vertex AI API, with a low temperature
-($T = 0.15$) to favor deterministic mathematical
-reasoning~\cite{team2023gemini}. The final answer is accompanied by a
-confidence level (high, medium, or low) computed from retrieval quality
-metrics, and full source transparency is provided through an expandable
-panel listing the retrieved documents and their metadata.
+\paragraph{Stage 5: Generation.}
+The retrieved material is inserted into a structured prompt together with the
+student question and then passed to the Gemini generation model. The aim is to
+produce an answer that is not only mathematically relevant, but also aligned
+with the style and reasoning conventions of Tunisian Bac corrections.
 
 \subsubsection{Shared Infrastructure Across System Variants}
 
-All three system variants evaluated in this thesis—the RAG system, the
-prompt-only baseline, and the hybrid engine—share the same underlying
-infrastructure:
+All three system variants evaluated in this thesis share the same basic
+infrastructure. They use the same generation model family, the same overall
+user interface, and the same general stylistic constraints for answer
+generation. The main difference lies in how each system constructs the context
+that is given to the model.
+
+In the RAG system, the prompt includes retrieved documents from the indexed
+corpus. In the prompt-only baseline, no retrieval is performed and the prompt
+itself must carry the full task guidance. In the hybrid system, the choice
+between retrieval-based and prompt-only behavior depends on the quality of the
+retrieved material.
+
+This shared setup was intentional. It makes the comparison between the three
+variants easier to interpret, since the main changing factor is the use of
+retrieval rather than unrelated differences in interface or generation model
+configuration.
+
+\section{Retrieval-Augmented Generation System}
+\label{sec:rag-system}
+
+This section describes the design and implementation of the
+retrieval-augmented generation (RAG) system developed in this thesis. In
+contrast to the prompt-only baseline presented in
+Section~\ref{sec:prompt-only}, this system uses retrieved documents from a
+curated corpus of Tunisian Baccalaureate mathematics material as additional
+context for answer generation. The implementation can be divided into six main
+parts: data acquisition, mathematical document digitization, database
+construction and indexing, embedding model selection, retrieval, and answer
+generation. Each of these components is presented in the following
+subsections, together with the main design choices that shaped the final
+system.
+
+\subsection{Data Acquisition and Paired Exercise--Correction Structure}
+\label{subsec:data-acquisition}
+
+The effectiveness of a retrieval-augmented system depends not only on the
+retrieval model, but also on the quality and internal organization of the
+corpus from which documents are retrieved~\cite{lewis2020rag,gao2024rag_survey}.
+For this reason, corpus construction was treated as a central part of the
+system design rather than as a simple preprocessing step. In building the
+dataset, priority was given to source quality, structural consistency, and the
+preservation of pedagogically meaningful document units.
+
+The target domain of the present work is Tunisian Baccalaureate mathematics
+(Section Mathématiques). This examination context is highly standardized, not
+only in terms of mathematical content but also in terms of redaction style.
+Successful answers are expected to follow recognizable conventions of
+presentation, justification, and logical sequencing. However, no publicly
+available machine-readable corpus of such material was available for direct
+use in this project. The corpus therefore had to be assembled manually from
+physical and scanned educational sources collected in Tunisia.
+
+\subsubsection{Physical Data Collection}
+
+
+The raw material was collected during a dedicated trip to Tunisia. The main
+sources were books and course materials prepared by experienced teachers who
+specialize in the Tunisian Baccalaureate mathematics program (Section
+Mathématiques). These materials are widely used by students preparing for the
+exam and typically contain both exercises and fully worked corrections written
+in the formal style expected in Bac examinations.
+
+Preparing this material for digitization raised two practical difficulties.
+Printed pages, such as typed exercise sheets or course notes, could usually be
+scanned without major problems using either a flatbed scanner or a
+high-resolution phone camera. Handwritten corrections were more difficult.
+Some were still legible enough to be scanned directly, but others contained
+dense notation, small handwriting, or faded ink and could not be converted
+reliably by OCR tools, including multimodal systems designed for visually
+complex documents~\cite{wang2023ocrbench, mahdavi2019icdar_math}. In those
+cases, the handwritten page was rewritten manually on a tablet before being
+scanned again. Although this added a manual step to the workflow, it helped
+avoid introducing low-quality source material into the retrieval corpus and
+was therefore consistent with the emphasis on upstream data quality discussed
+above~\cite{sambasivan2021everyone}.
+
+A further decision concerned the unit of scanning. Rather than digitizing
+entire exercise sheets and their corrections as large undivided documents, the
+material was prepared at the level of individual exercises whenever possible.
+In practice, this meant preserving the link between a given exercise and its
+corresponding correction as closely as the source material allowed. For course
+documents, by contrast, chapter material was typically scanned as a continuous
+document. This distinction was intentional and later became important for the
+retrieval stage.
+
+\subsubsection{Corpus Structure and File Organization}
+
+After scanning, the material was uploaded to a Google Cloud Storage (GCS)
+bucket~\cite{gcloud_storage2024}. The corpus was organized in a hierarchical
+folder structure designed to reflect both the mathematical chapter and the
+document type:
+
+\begin{verbatim}
+BacMath_Raw_Data/
+  01_Continuite_et_limites/
+    Cours/                          → course material
+    series_et_corrections/          → exercises + corrections
+  02_Derivabilite/
+    Cours/
+    series_et_corrections/
+  ...
+  20_Coniques/
+    Cours/
+    series_et_corrections/
+  Bac_avec_corrections_Images/      → past exam corrections
+\end{verbatim}
+
+The resulting corpus consists of three main categories of material. The first
+is chapter-based course material (\textit{Cours}), containing definitions,
+theorems, and other chapter-specific content. The second is chapter-based
+exercise series with worked corrections (\textit{series et corrections}).
+The third is a separate collection of older official Baccalaureate
+examinations together with their corrections.
+
+This folder structure was not chosen only for convenience. It also served as a
+machine-readable source of metadata. During indexing
+(Section~\ref{subsec:database-construction}), the system extracts information
+such as document type, chapter, year, session, and exercise identifier
+directly from the folder path and file name. For example, a path such as
+\texttt{BacMath\_Raw\_Data/10\_Nombres\_complexes/series\_et\_corrections/S1\_EX1\_sol\_1.jpg.tex}
+can be parsed automatically to recover the chapter (\textit{Nombres
+complexes}), the document type (\textit{serie}), the exercise key
+(\texttt{S1\_EX1}), and the fact that the file corresponds to a solution.
+This made it possible to attach structured metadata to indexed chunks without
+manual annotation.
+
+The corpus structure was also designed to remain easy to extend. Adding new
+material does not require redesigning the pipeline; it only requires placing
+the files in the appropriate chapter folder and subfolder. In its current
+state, the corpus spans 20 chapters and contains 624 indexed source files,
+which are represented as 1{,}422 retrieval chunks after indexing. A summary of
+the indexed corpus is given in Table~\ref{tab:corpus-stats}.
+
+\begin{table}[H]
+\centering
+\caption{Summary of the indexed corpus.}
+\label{tab:corpus-stats}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Item} & \textbf{Count} \\
+\hline
+Chapters covered & 20 \\
+Total indexed files & 624 \\
+Total chunks & 1{,}422 \\
+\hline
+\textit{bac\_officiel} files & 312 \\
+\textit{serie} files & 250 \\
+\textit{cours} files & 62 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Paired Exercise--Correction Acquisition}
+
+A deliberate design decision was made during corpus preparation: whenever
+possible, each exercise was acquired together with its corresponding
+correction, rather than treating exercise statements and solutions as fully
+independent documents. In this thesis, this is referred to as
+\textit{paired exercise--correction acquisition}.
+
+This choice was motivated by the nature of mathematical solutions
+themselves. A worked correction is not simply a final answer; it is a chain of
+reasoning whose meaning depends on the precise wording, assumptions, and
+constraints of the exercise. If the statement and the correction are detached
+from one another too early in the pipeline, part of that logical connection is
+lost. From a retrieval perspective, this is also undesirable: when a student
+asks a question, the most useful reference is usually a complete worked
+example, not a solution presented without its original problem statement.
+
+The decision was also consistent with broader findings on chunking and
+document structure in retrieval systems. Prior work suggests that retrieval
+often improves when document units follow meaningful internal boundaries rather
+than arbitrary character limits. Zhao~et~al.~\cite{zhao2024financial_chunking}
+show that structure-aware chunking can improve retrieval quality, and Chen
+et~al.~\cite{chen2024mog} likewise argue that different granularities may be
+appropriate for different retrieval needs. Although these studies do not focus
+specifically on mathematical exercises in the Tunisian Baccalaureate context,
+the same general principle applies here: in the present corpus, the exercise
+together with its correction forms a natural pedagogical unit, and preserving
+that unit during acquisition made the later retrieval stage more coherent.
+
+No prior work has studied paired exercise--correction acquisition for
+mathematical RAG systems in the specific context of the Tunisian
+Baccalaureate. This design decision is therefore presented as a
+domain-specific implementation choice of this thesis, grounded in broader
+principles of structure-aware document processing for retrieval
+systems~\cite{zhao2024financial_chunking, chen2024mog}.
+
+\subsection{Mathematical Document Digitization}
+\label{subsec:digitization}
+
+Once the raw material had been scanned, it still had to be converted into a
+machine-readable form suitable for indexing and retrieval. This was not a
+trivial step. Mathematical documents contain expressions whose meaning depends
+on spatial structure, such as fractions, superscripts, subscripts, integrals,
+or matrices, and these are not handled well by OCR systems designed primarily
+for linear text~\cite{wang2023ocrbench, mahdavi2019icdar_math}. For the
+present project, the digitization stage therefore had to preserve both the
+surrounding French text and the mathematical notation in a format that could
+later be embedded and retrieved. \LaTeX{} was chosen for this purpose because
+it provides a structured textual representation of mathematical expressions.
+
+\subsubsection{Tool Selection: Mathpix versus Gemini}
+
+At an early stage, we considered using \textbf{Mathpix}, a commercial tool
+specialized in mathematical OCR and equation-to-\LaTeX{} conversion~\cite{mathpix2024}.
+From a purely technical perspective, this would have been a reasonable choice.
+However, Mathpix is billed on a per-page basis, and the amount of scanned
+material collected for this thesis made that option difficult to justify
+within the available resources.
+
+For that reason, the digitization pipeline was built around \textbf{Google
+Gemini}, accessed through Vertex AI. Gemini is not a dedicated math-OCR tool,
+but it is a multimodal model that can process scanned images and produce
+structured text output. Recent evaluations suggest that large multimodal
+models can perform competitively on OCR-like tasks involving visually complex
+documents, including mathematical expressions, while still remaining sensitive
+to handwriting quality and scan degradation~\cite{wang2023ocrbench}. In our
+case, the corpus consisted mainly of printed material and carefully prepared
+handwritten pages, so Gemini proved sufficiently usable for the task.
+
+This choice should not be interpreted as a claim that Gemini is generally
+superior to specialized mathematical OCR tools. Rather, it was a practical
+decision shaped by cost and infrastructure. At the time of implementation, no
+direct peer-reviewed comparison between Gemini and Mathpix for this exact use
+case was available. The decision to use Gemini should therefore be understood
+as an implementation choice under resource constraints, not as a general
+benchmark conclusion.
+
+\subsubsection{Digitization Pipeline (\texttt{digitize.py})}
+
+The digitization workflow was implemented in the \texttt{digitize.py} module.
+Its role is to process scanned files stored in Google Cloud Storage and to
+generate companion \LaTeX{} files that can later be indexed by the retrieval
+pipeline.
+
+The process begins by scanning the bucket under the project prefix
+\texttt{BacMath\_Raw\_Data/} and identifying supported source files, including
+PDF, PNG, JPG, JPEG, and WEBP documents. Files that correspond to virtual
+environment folders, cache folders, or other irrelevant paths are ignored.
+
+For each raw file, the script then checks whether a corresponding
+\texttt{.tex} file already exists. This was important because digitization was
+performed incrementally over time rather than in a single batch. If a source
+file had already been processed, it was skipped. In practice, this made the
+pipeline resume-friendly: interrupted runs could be restarted without
+reprocessing the entire corpus.
+
+Files that still required digitization were sent to Gemini together with a
+structured prompt asking for a faithful transcription into \LaTeX{}. The prompt
+instructed the model to preserve both the mathematical content and the style
+of the original document as closely as possible, to keep the order of the
+document intact, and to mark unreadable passages explicitly with
+\texttt{[ILLISIBLE]}. It also requested a consistent document structure,
+including separate headings for exercise statements and corrections when both
+were present.
+
+Once generated, the resulting \LaTeX{} text was uploaded back to the same
+storage location as a companion \texttt{.tex} file. Errors were written to a
+JSONL report so that failed pages could later be inspected and retried
+without repeating successful transcriptions. The script also included retry
+logic with exponential backoff in order to handle temporary API failures more
+robustly during longer runs.
+
+\subsubsection{Bug Discovery and Fix}
+
+During development, a problem was discovered in an earlier version of the
+deduplication logic. The script checked only for companion files of the form
+\texttt{image.png.tex}, but some older transcriptions in the storage bucket
+had been saved under the shorter form \texttt{image.tex}. As a result, already
+digitized files could be treated as if they were still pending, which led to
+unnecessary reprocessing.
+
+This issue was corrected by making the deduplication step recognize both
+naming conventions when checking whether a raw file had already been
+transcribed. New uploads were then standardized under a consistent naming
+scheme. Although this was a relatively small implementation bug, it had
+practical consequences for cost, runtime, and reproducibility, and it
+therefore mattered for the stability of the overall pipeline.
+
+\subsubsection{Digitization Quality and OCR Groundtruth}
+
+Digitization quality was particularly important in this project because all
+later stages operate on the transcribed \LaTeX{} rather than on the original
+images. Any error introduced during OCR, such as an incorrect formula, a
+missing symbol, or a distorted theorem statement, becomes part of the indexed
+corpus and may later be retrieved as context for answer generation. In that
+sense, digitization errors do not remain local; they propagate through the
+rest of the system~\cite{sambasivan2021everyone}.
+
+For that reason, digitization quality was later examined through a small
+groundtruth evaluation in which manually checked pages were compared with the
+Gemini transcriptions. Since this constitutes an empirical result rather than
+a design choice, the methodology and findings are reported in the Results
+section. What is relevant here is that the need for such an evaluation was
+already clear at the design stage, because the digitization pipeline forms the
+basis of everything that follows in the RAG system.
+
+In practical terms, the experience gained during corpus preparation confirmed
+the same point. Printed pages and clean rewritten material were generally
+usable after transcription, whereas degraded handwritten pages were much more
+error-prone. This was one of the main reasons why the earlier manual rewriting
+step was not treated as optional convenience work, but as part of corpus
+quality control.
+
+\subsection{Database Construction and Indexing}
+\label{subsec:database-construction}
+
+With the corpus digitized into \LaTeX{} files stored in GCS, the next step is
+to transform these files into an indexed, searchable vector database. This is
+handled by the \texttt{build\_db.py} module, which performs normalization,
+chunking, metadata extraction, embedding, and storage.
+
+\subsubsection{From JSON Vector Store to ChromaDB}
+
+In an early prototype of the system, document embeddings were stored in a
+simple JSON-based vector store: each chunk's embedding vector, text, and
+metadata were serialized into a JSON file, and similarity search was performed
+by loading all vectors into memory and computing distances with NumPy. This
+approach was sufficient for initial experiments, but its limitations became
+clear as soon as the corpus began to grow:
 
 \begin{itemize}
-    \item The same generative model (Google Gemini, accessed through
-    Vertex AI) with identical temperature ($T = 0.15$) and maximum output
-    token settings (4{,}096 tokens).
-    \item The same system persona (``Monsieur Tounsi'') with the same
-    syllabus guard, redaction conventions, and anti-hallucination
-    constraints.
-    \item The same Streamlit-based user interface, providing a bilingual
-    chat interface (French and Tunisian Arabic) with source transparency
-    and optional debug observability.
+    \item \textbf{Scalability.} Loading the entire vector set into memory for
+    every query is manageable for dozens of chunks, but becomes impractical as
+    the corpus grows to hundreds or thousands.
+    \item \textbf{No incremental updates.} Adding new documents required
+    regenerating the entire JSON file and re-embedding all chunks, even if
+    only one file had changed.
+    \item \textbf{No metadata filtering.} The JSON store had no native support
+    for filtering by document type, chapter, or year during retrieval; all
+    such filtering had to be implemented ad hoc in application code.
+    \item \textbf{No persistence guarantees.} The JSON file could be corrupted
+    by concurrent writes or interrupted saves, with no transactional safety.
 \end{itemize}
 
-The \textit{only} difference between the three variants is how each
-constructs the context portion of the prompt: the RAG system includes
-retrieved documents from the vector store, the prompt-only baseline encodes
-the curriculum directly into the system prompt through ten specialized prompt
-components, and the hybrid engine dynamically selects between the two
-strategies based on retrieval confidence (Section~\ref{sec:hybrid}). This
-controlled design ensures that any performance difference observed in the
-evaluation (Section~\ref{sec:experiments}) can be attributed to the retrieval
-mechanism rather than to confounding factors in the generation pipeline.
+We therefore migrated to \textbf{ChromaDB}, an open-source vector database
+designed for embedding storage and similarity search in AI applications.
+ChromaDB provides persistent local storage (backed by SQLite for metadata and
+an HNSW index for vectors), native metadata filtering, deterministic upsert
+operations, and a Python API that integrates directly with custom embedding
+functions~\cite{chromadb2024}. For a thesis prototype operating on a
+domain-specific corpus of moderate size (approximately 2{,}000 chunks),
+ChromaDB offered a good balance between simplicity and the features required
+for a robust RAG pipeline. Managed cloud vector databases such as Pinecone or
+Weaviate provide additional scalability features, but they also introduce
+external dependencies and costs that were unnecessary at the scale of this
+project.
 
-% ─────────────────────────────────────────────────────────────────────────────
-% Include the existing detailed RAG methods section
-% The detailed RAG methods section is in the parent thesis directory.
-% When compiling from thesis/, use: pdflatex main.tex
-\input{rag_methods_section}
-% NOTE: If compilation fails, ensure you run pdflatex from the thesis/ directory,
-% or adjust the path to ../rag_methods_section if compiling from thesis/chapters/.
+The broader RAG literature consistently emphasizes the importance of
+purpose-built vector storage for retrieval systems. Karpukhin~et~al.
+demonstrated that dense passage retrieval with efficient vector indexing
+(using FAISS in their case) dramatically outperforms sparse retrieval
+methods such as BM25 for open-domain question answering~\cite{karpukhin2020dpr}.
+The underlying architectural principle is the same whether the index is stored
+in FAISS, ChromaDB, or another vector database: dense embeddings are
+precomputed and then searched through approximate nearest-neighbor methods.
+Our choice of ChromaDB reflects the practical need for a self-contained, locally
+persistent store that supports metadata-filtered retrieval without requiring a
+separate server process.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Prompt-Only Baseline}
-\label{sec:prompt-only}
+\subsubsection{Text Normalization}
 
-% NOTE on citations:
-% - brown2020gpt3: in-context learning / prompting as baseline
-% - wei2022chain_of_thought: chain-of-thought reasoning in prompts
-% - white2023prompt_patterns: structured prompt engineering patterns
-% - kasneci2023chatgpt_education: LLMs in education
-% - team2023gemini: Gemini model
-% Uncited (implementation-specific): 10-component structure, curriculum
-% inventory content, Sandwich Tounsi, keyword confidence heuristic.
+Before chunking, each downloaded \texttt{.tex} file is normalized: line
+endings are standardized (CRLF $\to$ LF), consecutive whitespace is
+collapsed, and runs of three or more newlines are reduced to double newlines.
+This helps ensure consistent chunk boundaries despite the formatting
+differences introduced during the Gemini transcription step.
 
+\subsubsection{Adaptive Chunking Strategy}
+
+Not all documents in the corpus share the same internal structure. Correction
+documents (Baccalaureate exams and exercise series) are usually organized
+around discrete exercises, each with clearly numbered parts. Course material,
+by contrast, contains longer theorem statements, proofs, and explanatory
+passages whose meaning often extends across a larger span of text. A uniform
+chunk size would therefore either split corrections in the middle of an
+exercise or produce course chunks that are too small to preserve the relevant
+context.
+
+For this reason, the system uses \textit{adaptive chunking}: chunk size and
+overlap are determined by document type. Correction-style documents
+(\texttt{bac\_officiel}, \texttt{serie}) use a smaller chunk size of 1{,}500
+characters with 200 characters of overlap, in order to preserve individual
+exercise boundaries as much as possible. Course material (\texttt{cours})
+uses a larger chunk size of 3{,}000 characters with 250 characters of
+overlap, so that theorem statements and their proofs remain together whenever
+possible. A default fallback of 1{,}800 characters with 200 characters of
+overlap is used for documents that do not match either category.
+
+The chunking algorithm itself prefers natural text boundaries over arbitrary
+character positions. When a chunk reaches its target size, the algorithm
+searches the last 40\% of the segment for the best available break point,
+prioritizing, in order, paragraph breaks (double newline), line breaks
+(single newline), sentence endings (period followed by space), and finally
+any whitespace. This boundary-aware splitting reduces the likelihood of
+cutting through a mathematical derivation or interrupting a logical argument
+mid-sentence.
+
+This approach is in line with recent findings by Zhao~et~al., who showed that
+structure-aware chunking significantly outperforms naive fixed-size splitting
+for RAG retrieval quality~\cite{zhao2024financial_chunking}. Chen~et~al.
+further proposed Mix-of-Granularity, a framework that dynamically selects
+optimal chunk granularity based on query characteristics, reinforcing the idea
+that no single chunk size is optimal for heterogeneous document
+collections~\cite{chen2024mog}.
+
+\subsection{Embedding Model Selection}
+\label{subsec:embedding-selection}
+
+The quality of a dense retrieval system is ultimately constrained by the
+quality of its embedding model. If two semantically different queries are
+mapped to very similar vectors, the retrieval stage cannot distinguish between
+them, and later steps in the pipeline have little chance of recovering that
+lost distinction. This issue is especially important in mathematical domains,
+where notational differences that look small such as $v(n)$ versus $u(n)$, or
+$\sin(x)$ versus $\cos(x)$ can correspond to entirely different meanings.
+
+\subsubsection{Initial Experience with Google Embedding Models}
+
+Our first implementation used a Google-provided embedding model, accessed
+through the Vertex AI Embeddings API. During testing, we noticed that this
+model did not always distinguish reliably between queries involving closely
+related mathematical sequences. For example, a question about the convergence
+of a sequence $v(n)$ could retrieve chunks discussing $u(n)$, and vice versa,
+even though these referred to different sequences with different recursive
+definitions and convergence properties in a given exercise. In hindsight, this
+is not especially surprising: general-purpose text embedding models are
+trained mainly on natural-language data, where a one-character change often
+does not alter the overall meaning of a passage. In mathematics, by contrast,
+such differences may be decisive.
+
+This observation is consistent with the broader literature on the limitations
+of text embeddings for mathematical content. Research on mathematical
+information retrieval has shown that mathematical expressions have
+inherently two-dimensional spatial structures and may appear in several
+semantically equivalent forms, which makes them fundamentally different from
+linear natural-language text~\cite{mansouri2019tangent, zanibbi2016math_retrieval}.
+Standard text embedding models, which are optimized for natural-language
+similarity, tend to treat mathematical symbols as rare tokens with weakly
+learned representations. The result can be poor discrimination between
+expressions that are structurally similar but semantically distinct~\cite{pfahler2020math_embeddings}.
+
+It should be noted that the specific observation about poor discrimination
+between $v(n)$ and $u(n)$ comes from our own development experience rather
+than from a controlled benchmark. We did not conduct a formal ablation study
+comparing multiple embedding models on a mathematical retrieval dataset. The
+decision to switch models was therefore based on recurring qualitative
+retrieval failures observed during iterative system development.
+
+\subsubsection{Migration to BGE-M3}
+
+We replaced the Google embedding model with \textbf{BGE-M3}
+(\textit{Multi-Linguality, Multi-Functionality, Multi-Granularity}), developed
+by the Beijing Academy of Artificial Intelligence
+(BAAI)~\cite{chen2024bge_m3}. BGE-M3 is built on an XLM-RoBERTa backbone,
+continually pre-trained with RetroMAE, and supports input sequences of up to
+8{,}192 tokens. It achieves state-of-the-art results on multilingual
+(MIRACL), cross-lingual (MKQA), and long-document retrieval benchmarks.
+
+Several characteristics of BGE-M3 make it particularly suitable for our use
+case:
+
+\begin{enumerate}
+    \item \textbf{Multilingual support.} The Tunisian Baccalaureate
+    mathematics corpus is written in French with embedded \LaTeX{} mathematical
+    notation and occasional Tunisian Arabic (Derja) terms. BGE-M3 supports
+    more than 100 languages, including French and Arabic, and was trained on
+    multilingual retrieval tasks, which makes it well suited to the
+    code-switching present in our documents.
+
+    \item \textbf{Long context window.} With a maximum input length of 8{,}192
+    tokens, BGE-M3 can embed our larger course-material chunks (up to 3{,}000
+    characters) without truncation, preserving the full semantic content of
+    theorem-length passages.
+
+    \item \textbf{Multi-granularity training.} The model was trained on inputs
+    ranging from short sentences to long documents, which fits the
+    heterogeneous nature of our corpus, where short exercise statements appear
+    alongside much longer course sections.
+
+    \item \textbf{Dense retrieval quality.} BGE-M3 simultaneously supports
+    dense, sparse, and multi-vector retrieval. In the present system, we use
+    only the dense retrieval mode by extracting the \texttt{dense\_vecs}
+    output. Even in this simpler setting, it provided better discrimination on
+    our mathematical content than the previous model. In particular, the
+    earlier $v(n)$/$u(n)$ confusion no longer appeared in the qualitative
+    retrieval checks carried out during development.
+\end{enumerate}
+
+The embedding function is implemented as a custom ChromaDB
+\texttt{EmbeddingFunction} class that wraps the \texttt{BGEM3FlagModel} from
+the FlagEmbedding library. The model is loaded once as a singleton and reused
+across embedding calls, with automatic GPU detection (\texttt{fp16=True}
+when CUDA is available, \texttt{fp16=False} on CPU) for hardware-adaptive
+performance.
+
+\subsection{RAG Retrieval and Generation Engine}
+\label{subsec:retrieval-engine}
+
+The core runtime pipeline is implemented in the \texttt{rag\_engine.py} module,
+which encapsulates the full retrieve--compile--generate cycle in a single
+class (\texttt{TunisianMathRAG}). The module is deliberately
+\textit{UI-agnostic}: it exposes a \texttt{.query(question, mode)} method
+that returns a structured \texttt{QueryResult} dataclass .
+
+\subsubsection{Two-Stage Retrieval}
+\label{subsubsec:two-stage}
+
+The retrieval strategy is one of the most distinctive design features of the
+RAG engine. Rather than performing a single undifferentiated similarity search
+over the full corpus, the engine uses a \textit{two-stage retrieval} pipeline
+that gives priority to correction-style documents before falling back to
+course material.
+
+\textbf{First pass: correction exemplars.}
+The first retrieval pass searches only among correction-type documents
+(\texttt{type} $\in$ \{\texttt{bac\_officiel}, \texttt{serie}\}
+with \texttt{is\_solution} = \texttt{true}), retrieving up
+to $k_1 = 10$ candidates. The underlying idea is pedagogical: when a student
+asks a question, the most useful reference is often a previously corrected
+exercise that is similar in topic and structure. Such a correction provides
+not only the mathematical content of the answer, but also a model of the
+expected redaction style, including the sequence of steps, the use of logical
+connectors (``On a\ldots'', ``Or\ldots'', ``Donc\ldots''), and the level of
+detail typically expected in a Baccalaureate correction. By placing these
+examples in the model context, the system encourages the LLM to reproduce the
+method and style of a relevant correction while adapting it to the student's
+question.
+
+\textbf{Second pass: course-material fallback.}
+If the best distance returned by the first pass exceeds a threshold , suggesting that no sufficiently similar correction is available, the
+engine performs a second retrieval pass over course material
+(\texttt{type} = \texttt{cours}), retrieving up to
+$k_2 = 8$ candidates. These documents provide the theoretical support needed
+to build a solution from definitions, properties, and theorem statements. In
+this case, the prompt instructs the LLM to construct the answer from the
+retrieved course material while preserving the expected Baccalaureate style.
+
+If neither pass returns sufficiently relevant material, the engine performs an
+unfiltered search over the corpus as a last resort, using a more relaxed
+distance threshold.
+
+\textbf{Pedagogical motivation.}
+This two-stage design reflects a deliberate pedagogical distinction. In the
+Tunisian Baccalaureate setting, there is a real difference between knowing the
+theory and knowing how to write a solution in the expected exam format. A
+correction exemplar shows the student how a solution is structured and
+presented; a course reference provides the underlying mathematical tools. By
+separating these two retrieval passes, the system can draw on the type of
+material that is most useful for the query instead of mixing corrections and
+theory indiscriminately.
+
+\subsubsection{Similarity Thresholds}
+
+The decision between retrieval stages is governed by two distance thresholds
+applied to the L2 distances returned by ChromaDB's HNSW index
+(lower distance = higher similarity):
+
+\begin{description}
+    \item[\texttt{SIMILARITY\_GOOD\_THRESHOLD} = 1.2]
+    If the best distance from the first pass is at or below this value, the
+    system treats the correction match as strong (Case~A) and uses only the
+    correction-pass results, supplemented by companion exercise statements.
+
+    \item[\texttt{SIMILARITY\_FALLBACK\_THRESHOLD} = 1.6]
+    Documents with distances above this value are discarded entirely, regardless
+    of which retrieval pass produced them. This helps prevent semantically
+    irrelevant material from entering the model context and degrading answer
+    quality through noise.
+\end{description}
+
+These thresholds were determined empirically during development. We inspected
+the distribution of L2 distances returned by BGE-M3 embeddings across a range
+of test queries and observed that distances below roughly 1.2 tended to
+correspond to genuinely relevant corrections, whereas distances above roughly
+1.6 more often returned material from unrelated topics. The intermediate range
+(1.2--1.6) typically corresponded to partially relevant results that shared a
+chapter or exercise type without matching the exact mathematical content of
+the query.
+
+We do not claim that these thresholds are theoretically optimal or directly
+transferable to other embedding models or corpora. They are
+implementation-specific parameters calibrated to the behavior of BGE-M3 on the
+present Tunisian Baccalaureate corpus, and would likely need to be adjusted if
+the embedding model, corpus size, or document domain were changed.
+
+\subsubsection{Context Compilation}
+
+The selected documents, whether they come from one retrieval pass or both, are
+formatted into XML-tagged context blocks before being inserted into the LLM
+prompt. Each block contains the document's GCS URI, metadata labels
+(\texttt{type}, \texttt{chapter}, \texttt{year}), a role tag
+(\texttt{[ÉNONCÉ]} for exercise statements, \texttt{[CORRECTION]} for
+solutions), and the document content truncated to a maximum of 2{,}000
+characters. The total context is capped at 14{,}000 characters so that it
+remains within the model's effective context window while still leaving room
+for the system prompt and the student's question.
+
+\subsubsection{Prompt Construction and Generation}
+
+The system prompt defines the persona of ``Monsieur Tounsi'', a 
+Tunisian mathematics teacher, and encodes several constraints:
+
+\begin{itemize}
+    \item \textbf{Anti-hallucination rules:} The model must use \textit{only}
+    information present in the retrieved context. If the context is
+    insufficient, it must say so explicitly and provide only a method outline.
+    \item \textbf{Mimicry decision tree:} In Case~A (correction found), the
+    model is instructed to copy the method and redaction style of the retrieved
+    correction. In Case~B (course material only), it must construct the
+    solution from retrieved theorems.
+    \item \textbf{Syllabus guard:} Methods outside the Tunisian
+    Baccalaureate curriculum (L'Hôpital's rule, Taylor series, matrix
+    diagonalization, etc.) are explicitly forbidden.
+    \item \textbf{Derja sandwich:} The answer begins and ends with short
+    motivational phrases in Tunisian Arabic dialect, while the mathematical
+    body remains in formal academic French.
+    \item \textbf{Anti-injection rules:} The model is warned that the context
+    may contain adversarial text and must never follow instructions embedded
+    inside retrieved documents.
+\end{itemize}
+
+The user prompt includes the interaction mode (correction for a dry,
+exam-style answer or coaching  for a more pedagogical explanation),
+the context blocks, the student's question, and final instructions requiring explicit source citation.
+
+
+\subsubsection{Confidence Levels and Observability}
+
+Every query returns a \texttt{QueryResult} dataclass that stores not only the
+generated answer, but also detailed observability information: the list of
+documents retrieved in each pass, their distances and metadata, the retrieval
+case (A or B), timing breakdowns (retrieval time, generation time, total
+time), and a confidence level.
+
+The confidence level is derived from retrieval quality:
+\begin{itemize}
+    \item \textbf{Fort} (high): the best distance is $\leq 1.2$ and the
+    total context exceeds 5{,}000 characters, indicating a strong match with
+    substantial supporting material.
+    \item \textbf{Moyen} (medium): the best distance is $\leq 1.6$ but
+    either the match is weaker or the context is limited.
+    \item \textbf{Faible} (low): no documents were retrieved, or all
+    distances exceed the fallback threshold.
+\end{itemize}
+
+This observability layer was important for the thesis evaluation because it
+made it possible to inspect retrieval decisions in detail, verify which
+documents had been selected, and analyze failure cases more systematically.
+
+\subsection{Paired Retrieval of Exercise and Correction}
+\label{subsec:paired-retrieval}
+
+During testing of the RAG engine, we noticed a structural problem in some of
+the retrieved contexts: the system could retrieve a correction chunk without
+the corresponding exercise statement, or retrieve an exercise statement
+without its correction. This happens because chunking may separate the two,
+and similarity search operates on individual chunks rather than on the
+exercise--correction pair as a whole.
+
+For mathematical reasoning, this is a real limitation. A correction is not
+fully self-contained  it answers a specific exercise statement whose
+conditions, notation, and variable names determine how the solution should be
+read. Without that statement, neither the language model nor a human reader
+can fully understand what the correction is addressing. The reverse problem is
+also unhelpful: an exercise statement on its own gives the problem, but not
+the worked method that the student is expected to learn from.
+
+\subsubsection{Companion Fetch Mechanism}
+
+To address this issue, the retrieval pipeline includes a \textit{companion
+fetch} mechanism. After the two-stage retrieval has selected its final set of
+correction documents, the engine performs a metadata-based lookup in order to
+find the corresponding exercise statement for each selected correction:
+
+\begin{enumerate}
+    \item For each correction chunk in the selected results, the engine
+    extracts the relevant metadata fields, in particular
+    \texttt{chapter}, \texttt{type}, \texttt{year}, and \texttt{exo\_id}.
+
+    \item Using these values, it builds a metadata filter that requests
+    chunks with the same identifiers but with
+    \texttt{is\_solution} = \texttt{false}, that is, exercise statements
+    rather than corrections.
+
+    \item This filter is executed through ChromaDB's
+    \texttt{collection.get()} method, which performs a direct SQLite metadata
+    lookup instead of a vector similarity search. In practice, this is both
+    fast and more reliable for this purpose than re-running filtered
+    similarity queries.
+
+    \item The retrieved exercise chunks (up to 3 per correction group) are
+    then prepended to the final context so that they appear before their
+    corresponding corrections.
+\end{enumerate}
+
+During context compilation, these companion exercise chunks are labeled with
+\texttt{[ÉNONCÉ]} and assigned a special distance marker
+(\texttt{companion (énoncé)}) to distinguish them from chunks returned by
+similarity search. This makes their role explicit: they are not included
+because they independently matched the query, but because they complete the
+context of a retrieved correction.
+
+\subsubsection{Significance for Mathematical RAG}
+
+This companion fetch mechanism does not appear to be explicitly described in
+the existing RAG literature, which usually assumes that each retrieved chunk
+is independently useful. In general-purpose question-answering systems
+such as those described by Lewis et al.~\cite{lewis2020rag} and
+Karpukhin et al.~\cite{karpukhin2020dpr}, that assumption is often
+reasonable: a retrieved Wikipedia paragraph can usually be interpreted on its
+own. In the present setting, however, the retrieved material comes from
+structured pedagogical documents in which exercises and corrections form
+logical pairs. In such a corpus, treating every chunk as fully independent is
+not always appropriate.
+
+The closest related idea in the literature is \textit{parent-document
+retrieval}, where a system indexes smaller chunks for retrieval precision but
+returns a larger parent document to restore context~\cite{gao2024rag_survey}.
+The companion fetch mechanism used here can be understood as a specialized
+version of that general pattern. Instead of returning a generic parent
+document, the system retrieves the specific structural counterpart of the
+selected chunk, namely the linked exercise statement or correction, identified
+through metadata matching.
+
+This design is therefore best described as an implementation-specific
+adaptation for mathematical RAG in an educational setting. To our knowledge,
+prior work has not explicitly implemented exercise--correction companion
+retrieval in a tutoring system of this kind.
+\subsection{Connection to the Tunisian Baccalaureate Context}
+\label{subsec:bac-context}
+
+The design decisions described in this section were shaped by the specific
+requirements of generating Tunisian Baccalaureate-style mathematical
+solutions. The system was not intended as a generic mathematics assistant, but
+as a domain-adapted tutor for a particular exam context. Four characteristics
+of that context were especially important:
+
+\begin{enumerate}
+    \item \textbf{Curriculum boundaries.} The Tunisian Baccalaureate
+    (Section Mathématiques) covers a fixed set of chapters, and examiners
+    penalize solutions that rely on methods outside the official program. The
+    system therefore has to remain within those boundaries. In the
+    implementation, this is supported both by the syllabus guard in the prompt
+    and by metadata-based retrieval restricted to curriculum-aligned material.
+
+    \item \textbf{Formal redaction conventions.} Baccalaureate corrections
+    follow a recognizable rhetorical style: numbered steps, logical
+    connectors in formal French (``On a\ldots'',
+    ``D'après le théorème de\ldots'', ``Donc\ldots''), and explicit concluding
+    statements. The two-stage retrieval strategy gives priority to correction
+    exemplars for precisely this reason, so that the LLM can imitate this
+    style and produce answers that resemble official corrections rather than
+    generic mathematical explanations.
+
+    \item \textbf{Exercise--correction dependency.} In Tunisian mathematical
+    pedagogy, corrections are typically read together with their exercises.
+    The companion fetch mechanism preserves this paired structure in the
+    retrieved context, so that the LLM has access to the full logical unit
+    needed to generate a coherent answer.
+
+    \item \textbf{Bilingual and dialectal context.} The corpus is primarily
+    in French with \LaTeX{} mathematical notation, but student questions may
+    include Tunisian Arabic (Derja), and the intended pedagogical style also
+    includes short motivational phrases in Derja. The choice of BGE-M3, with
+    multilingual training covering both French and Arabic, supports this
+    bilingual operating context.
+\end{enumerate}
+
+
+\section{Prompt-Only Baseline}
 \subsubsection{Role and Rationale}
 
-The prompt-only baseline is a zero-retrieval system that serves as a control
-condition in our experimental design. It receives the same student question
-and generates an answer using the same Gemini model, the same temperature
-($T = 0.15$), and the same output budget (4{,}096 tokens) as the RAG system,
-but it never queries the vector store. Its entire knowledge of the Tunisian
-Baccalaureate curriculum is encoded directly in the system prompt.
+The prompt-only baseline serves as the non-retrieval comparison system in the
+experimental design. It uses the same Gemini model as the RAG system, with the
+same temperature ($T = 0.15$) and the same maximum output length
+(4{,}096 tokens), but it never queries the vector database.
 
-The rationale for including this baseline is straightforward. Recent work has
-shown that large language models already possess substantial parametric
-knowledge of standard mathematical
-topics~\cite{brown2020gpt3, team2023gemini}, and that carefully structured
-prompts can elicit reasoning chains that rival more complex
-pipelines~\cite{wei2022chain_of_thought}. Without a prompt-only baseline, we
-cannot distinguish the contribution of the retrieval component from what the
-language model could have produced on its own. The prompt-only system
-therefore answers a specific question: \textit{how much does retrieval add
-compared to prompting alone, given a state-of-the-art generative model?}
+Instead, all task guidance is provided directly in the prompt. This includes
+the expected answer style, the curriculum boundaries, and the pedagogical
+framing of the response. In other words, the system must rely entirely on the
+model's parametric knowledge together with the instructions encoded in the
+prompt itself.
 
-To make this comparison fair, the baseline shares as much infrastructure as
-possible with the RAG system. Both use the same ``Monsieur Tounsi'' persona,
-the same syllabus guard, the same output format, and the same interaction
-modes (correction and coaching). The public API is also identical: both
-expose a \texttt{query(question, mode)} method that returns a structured
-result object with timings, confidence, and metadata. The only difference
-is the source of domain knowledge: retrieved documents versus an in-prompt
-curriculum specification.
+Including such a baseline is important because modern language models can
+often produce reasonable mathematical answers even without retrieval, provided
+that the prompt is well structured~\cite{brown2020gpt3, wei2022chain_of_thought}.
+Without this comparison point, it would be difficult to determine whether the
+performance of the RAG system comes from the retrieved corpus or simply from
+the underlying generative model. The prompt-only baseline therefore makes it
+possible to measure the added value of retrieval more clearly.
 
+For that reason, the baseline was kept as close as possible to the RAG system
+in all other respects. Both systems use the same ``Monsieur Tounsi'' persona,
+the same interaction modes (\textit{correction} and \textit{coaching}), and
+the same general output constraints. Both also expose the same public API
+through a \texttt{query(question, mode)} method. The main difference is thus
+deliberately limited to the source of domain knowledge: retrieved external
+documents in the RAG system, versus prompt-encoded guidance in the prompt-only
+baseline.
 
 \subsubsection{Prompt Architecture}
 
 The system prompt is organized into ten functional components that are
 concatenated into a single prompt string at inference time. This modular
-decomposition follows the principle of \textit{prompt
-patterns}~\cite{white2023prompt_patterns}, where each component addresses a
-distinct concern and can be tested or modified independently.
+organization follows the general idea of \textit{prompt
+patterns}~\cite{white2023prompt_patterns}, in the sense that different parts
+of the prompt are used to handle different constraints of the task.
+
+Some components define the pedagogical and stylistic identity of the system,
+while others are there to reduce recurrent failure modes observed during
+development. Taken together, they form the practical backbone of the
+prompt-only baseline.
 
 \begin{description}
     \item[Component~1: System persona.] Defines ``Monsieur Tounsi'' as a
-    veteran Tunisian mathematics teacher with 20+ years of Baccalaureate
-    preparation experience. This persona framing was chosen to steer the
-    model toward domain-appropriate register and vocabulary, following
-    evidence that role-based prompts improve task
+    veteran Tunisian mathematics teacher with more than twenty years of
+    Baccalaureate preparation experience. This persona framing was chosen to
+    steer the model toward a more domain-appropriate register and vocabulary,
+    in line with the idea that role-based prompts can improve task
     adherence~\cite{white2023prompt_patterns}.
 
     \item[Component~2: Curriculum inventory.] Enumerates all ten chapters of
-    the Section Mathématiques program with their specific topics—from
-    suites numériques through logarithme and exponentielle. This is the
-    core knowledge-bearing component. Without retrieval, the model must rely
-    on its parametric memory for mathematical content; the curriculum
-    inventory constrains \textit{which} content it should draw on.
-    The specific inventory was compiled from the official Tunisian
-    Baccalaureate program and verified against the source material in
-    our corpus. This is an implementation-specific artifact, not derived
-    from any published dataset.
+    the Section Mathématiques program, from suites numériques to logarithme
+    and exponentielle. This is the main knowledge-orientation component.
+    Because the system does not retrieve external documents, the prompt must
+    specify which part of mathematics the model is expected to stay within.
+    The inventory itself was compiled from the official Tunisian
+    Baccalaureate program and checked against the source material used in the
+    corpus. It is therefore an implementation-specific artifact rather than a
+    published benchmark resource.
 
-    \item[Component~3: Reasoning guardrails.] Defines a six-step mental
+    \item[Component~3: Reasoning guardrails.] Defines a six-step internal
     checklist (identify, recall, verify, plan, solve, check) that the model
-    must follow internally before producing output. This component draws on
-    the chain-of-thought prompting paradigm~\cite{wei2022chain_of_thought},
-    adapted here as an explicit procedural scaffold rather than a few-shot
-    example.
+    is instructed to follow before producing the final answer. This component
+    is inspired by the broader chain-of-thought prompting
+    literature~\cite{wei2022chain_of_thought}, but is implemented here as an
+    explicit procedural scaffold rather than through few-shot examples.
 
     \item[Component~4: Output structure.] Specifies the six-part answer
     format (identification, rappel du cours, méthode, application,
-    conclusion, vérification) and the \LaTeX{} rendering conventions. Both
-    interaction modes—\textit{correction} (dry exam-style) and
-    \textit{coaching} (pedagogical)—use this structure, though coaching mode
-    adds explanatory annotations and a ``pour aller plus loin'' section.
+    conclusion, vérification) together with the expected \LaTeX{} formatting
+    conventions. Both interaction modes, \textit{correction} and
+    \textit{coaching}, follow this overall structure, although coaching mode
+    allows more explanatory phrasing.
 
-    \item[Component~5: Hallucination control.] Because there is no
-    retrieved context to anchor the answer, this component is deliberately
-    more aggressive than in the RAG system. It instructs the model to never
-    cite specific exercise numbers or manual page references unless it is
-    certain they exist, and to prefer general statements (``this type of
-    exercise appears regularly in the Bac'') over fabricated specifics. This
-    is an implementation-specific choice motivated by early testing, where
-    we observed the model occasionally inventing plausible-sounding but
-    nonexistent exam references.
+    \item[Component~5: Hallucination control.] Because the prompt-only system
+    has no retrieved context to anchor its answers, this component is stricter
+    than in the RAG version. It instructs the model not to invent specific
+    exercise numbers, textbook references, or exam sources unless it is
+    certain they exist, and to prefer more general wording when uncertainty is
+    high. This was introduced as an implementation-specific response to early
+    testing, where the model occasionally produced plausible-sounding but
+    nonexistent references.
 
     \item[Component~6: Syllabus guard.] Lists methods that are explicitly
-    outside the Baccalaureate program (L'Hôpital's rule, Taylor series,
-    matrix diagonalization, Laplace/Fourier transforms, improper integrals,
-    and several others) and instructs the model to refuse these with a
-    polite redirect to the Bac-compatible alternative.
+    outside the Baccalaureate program, such as L'Hôpital's rule, Taylor
+    series, matrix diagonalization, Laplace or Fourier transforms, and
+    improper integrals. The model is instructed to refuse these politely and
+    redirect the answer toward a Bac-compatible alternative.
 
-    \item[Component~7: Derja sandwich.] Specifies that each answer should
-    open and close with a short motivational phrase in Tunisian Arabic
-    (Derja), with the mathematical body in formal academic French. This
-    ``sandwich'' convention reflects how Tunisian teachers actually interact
-    with students—it is a cultural pedagogical norm, not a published
-    technique.
+    \item[Component~7: Derja sandwich.] Specifies that each answer should open
+    and close with a short motivational phrase in Tunisian Arabic (Derja),
+    while the mathematical body remains in formal academic French. This
+    convention was not taken from the literature; it reflects a pedagogical
+    style familiar from real teacher--student interaction in the Tunisian
+    context.
 
-    \item[Component~8: Self-verification block.] Requires the model to add
-    a visible verification section at the end of each answer (e.g.,
-    ``On vérifie : $f(x_0) = \ldots$ \checkmark''). The purpose is
-    twofold: it forces the model to check its own computation, and it
-    teaches the student a verification habit.
+    \item[Component~8: Self-verification block.] Requires the model to add a
+    visible verification step at the end of the answer, for example by
+    substituting a computed value back into an equation. The goal is both to
+    encourage internal checking and to make verification part of the student's
+    visible solving routine.
 
-    \item[Component~9: Refusal policy.] Defines explicit refusal behavior
-    for questions outside the scope of Bac mathematics, requests to generate
-    exam papers, or questions targeting a different educational level.
+    \item[Component~9: Refusal policy.] Defines how the system should respond
+    to requests that fall outside the intended scope, including questions from
+    another educational level, requests to generate exam papers, or prompts
+    that ask explicitly for out-of-program methods.
 
-    \item[Component~10: Confidence calibration.] Maps the model's
-    self-assessed certainty to three labels (fort, moyen, faible), displayed
-    at the end of each answer. Without retrieval distances as a signal, the
-    model must rely on the question's characteristics to estimate
-    confidence—a limitation discussed below.
+    \item[Component~10: Confidence calibration.] Maps the model's internal
+    sense of certainty to three labels (fort, moyen, faible), which are shown
+    at the end of the answer. Unlike the RAG system, this calibration cannot
+    rely on retrieval distances and is therefore based only on question
+    characteristics and prompt-internal heuristics.
 \end{description}
 
-This ten-component architecture is entirely an implementation-specific
-design. We are not aware of a published reference that decomposes
-mathematical tutoring prompts in exactly this way. The decomposition
-emerged iteratively during development as we identified failure modes
-(curriculum violations, hallucinated references, inconsistent formatting)
-and added targeted prompt components to address each one.
-
+This ten-component structure is an implementation-specific design choice. We
+are not aware of a published reference that decomposes mathematical tutoring
+prompts in exactly this way. The structure emerged gradually during
+development, as repeated failure modes such as curriculum violations,
+hallucinated references, and inconsistent formatting made it necessary to add
+more targeted prompt components.
 
 \subsubsection{Confidence Estimation Without Retrieval}
 
-A notable limitation of the prompt-only baseline is the absence of retrieval
-quality signals. In the RAG system, confidence is computed from the L2
-distance of the best-matching document and the volume of retrieved context
-(Section~\ref{subsec:retrieval-engine}). The prompt-only system has no such
-signals.
+A clear limitation of the prompt-only baseline is that it has no retrieval
+signal on which to base a confidence estimate. In the RAG system, confidence
+can be derived from the distance of the best-matching document together with
+the amount of retrieved context (Section~\ref{subsec:retrieval-engine}). The
+prompt-only system has no equivalent source of evidence.
 
-As a pragmatic workaround, we implemented a keyword-based heuristic: if the
-question contains terms strongly associated with standard Bac exercise types
-(e.g., ``récurrence'', ``limite'', ``intégrale'', ``PGCD'', ``Bézout''),
-the system reports high confidence on the assumption that the model's
-parametric knowledge of these standard topics is likely adequate. Very short
-or ambiguous questions receive low confidence. All other cases default to
-medium.
+As a practical workaround, we implemented a simple keyword-based heuristic.
+If the question contains terms strongly associated with standard Bac exercise
+types, such as ``récurrence'', ``limite'', ``intégrale'', ``PGCD'', or
+``Bézout'', the system reports high confidence on the assumption that the
+model's parametric knowledge of these common topics is more likely to be
+sufficient. Very short or ambiguous questions are assigned low confidence.
+All remaining cases default to medium.
 
-This heuristic is deliberately simple and is presented as an
-implementation-specific approximation, not a principled confidence
-calibration method. Its primary purpose is to provide a comparable
-confidence signal for the evaluation framework, which grades all three
-systems on the same rubric.
-
+This heuristic is intentionally simple. It is presented as an
+implementation-specific approximation rather than as a principled confidence
+calibration method. Its main purpose is to provide a confidence signal that
+can be recorded in the same evaluation framework as the other two systems.
 
 \subsubsection{Limitations as a Baseline}
 
-The prompt-only system makes a strong bet: that the language model's
-parametric knowledge, guided by a structured prompt, is sufficient to
-produce correct Bac-style solutions. In practice, we expected this to work
-reasonably well for standard, frequently-asked exercise types that are
-well-represented in the model's pretraining data, and to degrade for less
-common topics or for exercises requiring the exact notation and method
-conventions of the Tunisian program. The evaluation
-(Section~\ref{sec:experiments}) tests whether this expectation holds.
+The prompt-only system makes a fairly strong assumption: that the language
+model's parametric knowledge, when guided by a carefully structured prompt, is
+sufficient to produce Bac-style mathematical answers.
 
+In practice, we expected this approach to work better for standard and
+frequently occurring exercise types, which are more likely to resemble
+patterns seen during pretraining, than for less common topics or questions
+that depend heavily on the exact notation, wording, and correction conventions
+of the Tunisian program. The evaluation
+(Section~\ref{sec:experiments}) tests to what extent this expectation is borne
+out in practice.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Hybrid Engine}
-\label{sec:hybrid}
-
-% NOTE on citations:
-% - yan2024practical_rag (CRAG): corrective RAG with retrieval quality assessment
-% - asai2023self_rag: self-RAG with adaptive retrieve-or-not decisions
-% - gao2024rag_survey: discusses adaptive retrieval strategies
-% - lewis2020rag: original RAG
-% Uncited (implementation-specific): three-case routing, thresholds (1.2/1.6),
-% Case B confidence cap, companion doc filtering in routing.
+\section{Hybrid Engine}
 
 \subsubsection{Motivation}
 
-The RAG system and the prompt-only baseline represent two extremes. The RAG
-system always retrieves and always conditions its answer on the retrieved
-context, even when retrieval returns poor matches. The prompt-only system
-never retrieves and relies entirely on the model's parametric knowledge, even
-when highly relevant corrections exist in the corpus. Neither strategy is
-optimal across all queries.
+The RAG system and the prompt-only baseline correspond to two opposite design
+choices. The RAG system always retrieves and always conditions its answer on
+retrieved context, even when the retrieved material is only weakly relevant.
+The prompt-only system does the reverse: it never retrieves and relies
+entirely on the model's parametric knowledge, even when highly relevant
+corrections exist in the corpus. In practice, neither extreme is ideal for
+all queries.
 
-This observation is not unique to our system. Recent work on adaptive
-retrieval has shown that the decision of \textit{whether} to retrieve—and
-how much to trust the retrieved results—can be as important as the retrieval
-mechanism itself. Yan~et~al.~\cite{yan2024practical_rag} propose Corrective
-RAG (CRAG), which evaluates retrieval quality and triggers corrective actions
-(web search or regeneration) when the initial retrieval is
-unsatisfactory. Asai~et~al.~\cite{asai2023self_rag} introduce Self-RAG,
-where the language model itself decides whether retrieval is needed for a
-given query and can critique its own output against the retrieved passages.
-Both approaches share the insight that a static retrieval policy is
-suboptimal.
+This intuition is reflected in recent work on adaptive retrieval. Several
+studies argue that the question is not only how retrieval should be performed,
+but also when it should be trusted. Yan~et~al.~\cite{yan2024practical_rag},
+for example, propose Corrective RAG (CRAG), in which retrieval quality is
+evaluated before deciding whether corrective actions are needed. Asai
+et~al.~\cite{asai2023self_rag} introduce Self-RAG, where the model itself can
+decide whether retrieval is necessary and can assess the usefulness of the
+retrieved evidence. Although these systems are more sophisticated than the one
+implemented here, they share the same basic insight: a fixed retrieval policy
+is often suboptimal.
 
-The hybrid engine in this thesis implements a simpler version of this idea,
-adapted to our specific constraints. Rather than training a retrieval
-critic or adding a web search fallback, we route each query to one of three
-generation strategies based on the L2 distance of the best-retrieved
-document—a signal that is already available from the retrieval pipeline
+The hybrid engine developed in this thesis adopts a simpler version of this
+idea. It does not train a retrieval critic and does not add an external web
+search fallback. Instead, it routes each query to one of three generation
+strategies based on the L2 distance of the best retrieved document, a signal
+that is already produced by the retrieval pipeline and can therefore be used
 at no additional cost.
-
 
 \subsubsection{Adaptive Routing Logic}
 
-The hybrid engine is not a separate system with its own retrieval
-pipeline. It is implemented as a thin routing layer on top of the existing
-RAG engine: it calls the same two-stage retrieval
-(Section~\ref{subsec:retrieval-engine}), receives the same set of
-candidate documents with their L2 distances, and then decides which
-generation strategy to apply. The routing function examines the distance
-of the best-matching document among the \textit{real} similarity search
-results, excluding companion documents (which have a synthetic distance
-marker and should not influence the quality assessment). Three cases are
-distinguished:
+The hybrid engine is not implemented as a separate retrieval system. It is a
+thin routing layer built on top of the existing RAG engine. Concretely, it
+calls the same two-stage retrieval procedure
+(Section~\ref{subsec:retrieval-engine}), receives the same candidate
+documents together with their distances, and then decides how the final answer
+should be generated. The routing function evaluates the distance of the
+best-matching \textit{real} retrieval result, while excluding companion
+documents, since those are inserted for context completeness and carry a
+synthetic distance marker rather than a genuine similarity score.
+
+Three cases are distinguished:
 
 \begin{description}
     \item[Case~A: Strong retrieval] (best distance $\leq 1.2$).
-    The query closely matches one or more corrections in the corpus. The
-    system uses the same RAG-grounded generation strategy described in
-    Section~\ref{subsec:retrieval-engine}: the system prompt instructs the
-    model to use \textit{only} the retrieved context, to mimic the
-    redaction style of the retrieved corrections, and to cite sources
-    explicitly. Anti-hallucination and anti-injection rules are enforced
-    as in the standalone RAG system.
+    The query closely matches one or more corrections in the corpus. In this
+    situation, the system behaves like the standalone RAG engine described in
+    Section~\ref{subsec:retrieval-engine}: the prompt instructs the model to
+    rely only on the retrieved context, to imitate the style of the retrieved
+    corrections, and to cite sources explicitly. The same anti-hallucination
+    and anti-injection constraints remain in place.
 
     \item[Case~B: Partial retrieval] ($1.2 <$ best distance $\leq 1.6$).
-    The retrieval found documents that share a chapter or exercise type with
-    the query but do not closely match its specific content. Rather than
-    discarding these partially relevant documents (as a strict threshold
-    policy would), the system includes them in the context \textit{and}
-    supplements the system prompt with the full curriculum inventory and
-    syllabus guard from the prompt-only component. The model is instructed
-    to use the documents when pertinent, to complement them with its
-    curriculum knowledge where gaps exist, and to signal clearly which parts
-    of its answer come from retrieved sources (``D'après la Source~X\ldots'')
-    and which from the official program (``D'après le programme
-    officiel\ldots''). This explicit source attribution is an
-    implementation-specific requirement designed to maintain transparency
-    when two knowledge sources are mixed.
+    The system has retrieved documents that are not irrelevant, but are also
+    not strong enough to justify a purely retrieval-grounded answer. In this
+    case, the retrieved material is kept in the context, but the prompt is
+    also supplemented with the curriculum inventory and syllabus guard from
+    the prompt-only system. The model is therefore allowed to combine partial
+    retrieval evidence with parametric knowledge, while being instructed to
+    make source attribution explicit where possible. This mixed-source
+    behavior is an implementation-specific design choice intended to preserve
+    useful retrieval without forcing the model to depend on it too strongly.
 
     \item[Case~C: No useful retrieval] (best distance $> 1.6$, or no
     documents returned).
-    The retrieval produced nothing relevant. The system discards all
-    retrieved documents and falls back to the prompt-only strategy, using
-    the same system prompt, curriculum inventory, and hallucination controls
-    as the standalone prompt-only baseline.
+    The retrieved material is considered too weak to be useful. In this case,
+    the system discards the retrieved documents and falls back to the same
+    strategy used by the prompt-only baseline.
 \end{description}
 
-This three-case design can be understood as a discrete approximation of
-the retrieval quality assessment in CRAG~\cite{yan2024practical_rag}, where
-a continuous confidence score determines whether to accept, refine, or
-discard the retrieval results. Our implementation uses two fixed thresholds
-instead of a learned classifier, which is simpler but requires manual
-calibration.
-
+This three-case routing scheme can be seen as a simplified practical analogue
+of the retrieval-quality assessment discussed in CRAG~\cite{yan2024practical_rag}.
+The difference is that our system uses fixed thresholds rather than a learned
+quality estimator. That makes the implementation much simpler, but also means
+that the thresholds have to be set empirically.
 
 \subsubsection{Threshold Determination}
 
-The two distance thresholds that define the case boundaries—1.2 for the
-Case~A/B boundary and 1.6 for the Case~B/C boundary—are the same
-thresholds used in the standalone RAG engine's two-stage retrieval
-(Section~\ref{subsec:retrieval-engine}). They were determined empirically
-by examining the distribution of L2 distances returned by BGE-M3 across a
-range of test queries during development. Documents below 1.2 consistently
-corresponded to corrections that were genuinely relevant; documents above
-1.6 were typically on unrelated topics; the intermediate range produced
-partial matches.
+The two thresholds that define the boundaries between Cases~A, B, and C are
+the same thresholds already used in the standalone RAG engine: 1.2 for the
+Case~A/B boundary and 1.6 for the Case~B/C boundary
+(Section~\ref{subsec:retrieval-engine}). They were selected empirically by
+inspecting the distribution of L2 distances returned by BGE-M3 over a range of
+test queries during development. Distances below 1.2 were usually associated
+with genuinely relevant corrections, while distances above 1.6 tended to
+return material from unrelated topics. The intermediate range generally
+corresponded to partial matches.
 
-We make the same caveat here as in the RAG section: these thresholds are
-not theoretically grounded or claimed to generalize beyond our specific
-corpus and embedding model. They are implementation-specific parameters that
-would require recalibration if the embedding model, corpus content, or
-document domain were changed.
-
+As in the RAG system, no claim is made that these thresholds are theoretically
+optimal or that they would transfer unchanged to another corpus or embedding
+model. They should be understood as implementation-specific parameters tuned
+to the behavior of BGE-M3 on the present Tunisian Baccalaureate corpus.
 
 \subsubsection{Confidence Management}
 
-The confidence signal in the hybrid engine depends on the routing case:
+The confidence signal in the hybrid engine depends on the routing case.
 
-\begin{itemize}
-    \item In \textbf{Case~A}, confidence is computed using the same
-    retrieval-based formula as the standalone RAG system (distance
-    and context volume).
-    \item In \textbf{Case~B}, confidence is capped at ``moyen'' (medium),
-    regardless of other signals. This cap is a deliberate design choice: if
-    the retrieval quality was insufficient to trigger Case~A, the system
-    should not claim high confidence merely because it supplemented weak
-    documents with parametric knowledge. The cap prevents false assurance
-    when the answer is partially grounded and partially generated.
-    \item In \textbf{Case~C}, confidence falls back to the keyword-based
-    heuristic from the prompt-only baseline.
-\end{itemize}
+In \textbf{Case~A}, confidence is computed in the same way as in the
+standalone RAG system, using retrieval quality and context volume. In
+\textbf{Case~C}, confidence falls back to the same keyword-based heuristic as
+in the prompt-only baseline.
 
-The Case~B confidence cap (\texttt{HYBRID\_CASE\_B\_MAX\_CONFIDENCE =
-"moyen"}) is stored as a configuration parameter and can be adjusted, but
-in our evaluation it remained fixed at medium. This is an
-implementation-specific decision based on the observation that mixed-source
-answers are inherently less reliable than fully grounded ones.
-
+\textbf{Case~B} required a separate decision. In this case, the answer is
+partly supported by retrieved documents and partly supplemented by parametric
+knowledge. For that reason, confidence is explicitly capped at
+``moyen'' (medium), regardless of other signals. This cap is an
+implementation-specific choice. It reflects the view that a mixed-source answer
+should not be presented as highly reliable if the retrieval quality was not
+strong enough to justify Case~A in the first place. In the configuration, this
+appears as the parameter
+\texttt{HYBRID\_CASE\_B\_MAX\_CONFIDENCE = "moyen"}.
 
 \subsubsection{Relationship to Adaptive Retrieval Literature}
 
-The hybrid engine's routing mechanism occupies a middle ground in the
-adaptive retrieval landscape. Compared to CRAG~\cite{yan2024practical_rag},
-which can trigger external web searches when retrieval fails, our system
-is closed: it only has access to the corpus and the model's parametric
-knowledge, with no external fallback. Compared to
-Self-RAG~\cite{asai2023self_rag}, which trains the language model to emit
-special retrieval and critique tokens, our routing is a simple distance
-threshold check that requires no model modification or additional training.
+Within the broader literature on adaptive retrieval, the hybrid engine used
+here occupies a fairly simple middle position. Compared with
+CRAG~\cite{yan2024practical_rag}, which can trigger additional corrective
+steps such as web search, our system remains closed: it can only use the
+corpus and the model's own parametric knowledge. Compared with
+Self-RAG~\cite{asai2023self_rag}, which relies on model-level retrieval and
+critique tokens, our routing mechanism is much simpler and does not require
+any model modification or additional training.
 
-This simplicity is appropriate for a bachelor thesis system with a fixed,
-domain-specific corpus. The key contribution is not the routing mechanism
-per se—which is deliberately minimal—but the observation that even a
-simple quality-aware routing policy can avoid the failure modes of both
-pure-RAG (forcing generation from irrelevant context) and pure-prompting
-(ignoring relevant retrieved material when it exists). Whether this holds
-in practice is tested in the evaluation
-(Section~\ref{sec:experiments}).
+This simplicity is deliberate. For a bachelor thesis built around a fixed,
+domain-specific corpus, the goal was not to propose a new adaptive retrieval
+framework, but to test whether a lightweight quality-aware routing policy
+could reduce two practical failure modes: forcing generation from weak
+retrieval results, and ignoring relevant retrieved material when it is
+available. Whether this improves performance in practice is examined in the
+evaluation section (Section~\ref{sec:experiments}).
