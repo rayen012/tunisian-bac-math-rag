@@ -56,55 +56,131 @@ effectively without the overhead and potential noise of retrieval.
 \subsubsection{Why RAG and Hybrid Scored Lower}
 
 The RAG system's lower scores suggest that, at the current corpus scale
-(1{,}422 chunks across 20 chapters), retrieval introduces more noise than
-signal for many queries. Several mechanisms may explain this.
+(903 chunks across 15+ chapters), retrieval introduces more noise than
+signal for many queries. The retrieval routing analysis
+(Section~\ref{subsec:retrieval-routing-analysis}) provides concrete evidence
+for this interpretation: while all 19 queries achieved best L2 distances
+below 1.0—well within the strong-match threshold—only 8 of the 19 (42\%)
+retrieved documents from the correct mathematical chapter. Low embedding
+distance, in other words, did not reliably indicate topical relevance.
 
-The corpus, while carefully curated, covers a finite set of past
-examinations and exercise series. For questions that do not closely match
-any document in the corpus—either because the specific problem variant is
-absent or because the question uses different notation—the retrieval
-pipeline returns partially relevant documents that share a chapter or topic
-but not the specific exercise. In Case~A of the RAG system, these
-partially relevant documents are presented as authoritative context, and
-the model is instructed to follow them closely. If the retrieved correction
-solves a different variant of the problem, the model may produce a confused
-or hybrid answer that neither faithfully reproduces the retrieved solution
-nor cleanly solves the actual question.
+This disconnect likely arises from the structure of the corpus. A substantial
+proportion of the indexed documents are multi-topic Baccalaureate exam
+compilations (``Bac avec corrections Images'') that span several chapters
+within a single file. Because these documents contain diverse mathematical
+vocabulary, they score low L2 distances against many queries regardless
+of the specific topic being asked about. When such a document is retrieved
+and presented as authoritative context, the model is instructed to follow it
+closely (Case~A anti-hallucination rules), even though the relevant
+portion of the document may address a different exercise entirely. The model
+must then attempt to reconcile the retrieved context with the actual
+question, which can produce a confused or incomplete answer.
+
+The qualitative examples in Section~\ref{subsec:qualitative-examples}
+illustrate this concretely. For Question~B02 (probability), the RAG system
+achieved its best distance across the entire evaluation ($d = 0.40$), yet
+the retrieved corrections addressed simultaneous draws rather than the
+sequential draws asked for. For Question~C01 (continuity at a point), the
+retrieved material covered continuity on intervals—a related but distinct
+concept. In both cases, the model's output was constrained by partially
+relevant context rather than enhanced by it.
+
+\subsubsection{Why the Hybrid Engine Did Not Differentiate}
+\label{subsec:retrieval-routing-discussion}
 
 The Hybrid engine scored nearly identically to the standalone RAG system
-(3.25 vs.\ 3.22), suggesting that the adaptive routing mechanism did not
-substantially mitigate this problem. One likely reason is that most queries
-fell into Case~A (best distance $\leq 1.2$), where the Hybrid engine
-behaves identically to the RAG system. The Hybrid engine's distinctive
-behavior occurs only in Case~B (partial match) and Case~C (no match),
-which may have been triggered for too few of the 15 graded questions to
-shift the overall average.
+(3.25 vs.\ 3.22). The retrieval analysis reveals a structural reason for
+this: all 19 queries were classified as Case~A by both engines, meaning the
+Hybrid engine's distinctive routing behavior—Cases~B (partial match) and~C
+(no match), which merge retrieved context with curriculum knowledge or fall
+back to pure prompt engineering—was never activated during the evaluation.
 
-The one notable exception is Category~D (Derja/mixed language), where the
-Hybrid engine scored 4.12 compared to the RAG system's 3.50. Queries in
-Tunisian Arabic are unlikely to match French-language corpus documents
-closely, which would push them into Case~B or Case~C of the routing logic.
-In these cases, the Hybrid engine supplements weak retrieval with the
-embedded curriculum inventory, which appears to have been beneficial.
+This outcome was not anticipated in the system design. The thresholds
+(Case~A $\leq 1.2$, Case~B $\leq 1.6$) were set based on preliminary
+testing, but the evaluation revealed that the BGE-M3 embedding model
+produces distances below 1.0 for virtually any query against a corpus of
+this size and diversity. The threshold values may have been set too
+generously, effectively collapsing the three-case architecture into a
+single case.
+
+A more aggressive threshold—for example, lowering the Case~A boundary from
+1.2 to 0.6 or 0.7—might have routed some queries to Cases~B or~C,
+potentially allowing the Hybrid engine to demonstrate its distinctive
+contribution. However, lowering the threshold without also improving the
+chapter-match precision of the retrieval would risk routing queries away from
+Case~A even when relevant documents \textit{were} retrieved. Threshold
+calibration and its interaction with corpus composition remain open questions
+for future work.
+
+The Category~D (Derja/mixed language) results are instructive in this regard.
+Despite both Derja queries being classified as Case~A (distances of 0.89 and
+0.96), the Hybrid engine scored 4.12 compared to the RAG system's 3.50 on
+these questions. One explanation is that the Derja queries, while achieving
+low distances, may have retrieved documents where the language mismatch
+(Derja query against French-language corpus) was partially compensated by the
+Hybrid engine's curriculum-aware prompt assembly, even within Case~A.
+
+\subsubsection{The Distance--Relevance Gap}
+
+Perhaps the most important finding from the retrieval analysis is the
+disconnect between embedding distance and topical relevance. All queries
+fell below the strong-match threshold, yet fewer than half retrieved
+documents from the correct chapter. This suggests that L2 distance in the
+BGE-M3 embedding space is not a reliable proxy for mathematical topic
+alignment at the chapter level—at least not at the current corpus scale
+and with the current chunking strategy.
+
+Several factors may contribute to this gap. First, the BGE-M3 model was
+not fine-tuned on mathematical or Tunisian educational content; it is a
+general-purpose multilingual model. Mathematical queries from different
+chapters may share substantial vocabulary (``montrer que,'' ``calculer,''
+``en déduire que'') that produces similar embeddings even when the
+mathematical content differs. Second, the multi-topic exam compilations in
+the corpus act as nearest-neighbor ``attractors'' for many queries because
+they contain vocabulary from multiple chapters. Third, the chunking strategy
+(1{,}500 characters for corrections) may split exercises in ways that
+obscure their chapter-specific content.
+
+This finding has practical implications: a retrieval system for mathematical
+tutoring may benefit from metadata-aware filtering (restricting retrieval
+to the detected chapter) in addition to, or instead of, purely
+distance-based selection. Such an approach would require a reliable chapter
+detection step before retrieval, which was not implemented in the current
+system.
+
+\subsubsection{The Second-Pass Silence}
+
+The two-stage retrieval strategy was designed to provide theorem-level
+context when correction-only retrieval was insufficient. In practice, the
+second pass (course material) was never activated, because the first pass
+always yielded distances below 1.2. This means the LLM was conditioned
+exclusively on past exam corrections for all 19 queries, never on theorem
+definitions or course notes.
+
+For coaching-mode questions (Category~C), which ask for conceptual
+explanations, this is a notable mismatch: the student asks ``what is the
+method?'' and the system retrieves worked solutions to different exercises
+rather than the underlying definitions and theorems. The Prompt-Only system,
+which encodes curriculum structure directly in its prompt, was free to
+provide the conceptual explanation the student needed. This likely contributes
+to the large Category~C performance gap (Prompt-Only 4.75 vs.\ RAG 3.33).
 
 
 \subsubsection{Per-Category Observations}
 
 Category~C (informal student questions) showed the largest gap between
 the Prompt-Only system (4.75) and the retrieval-based systems (RAG 3.33,
-Hybrid 2.92). These coaching-mode questions ask for conceptual
-explanations rather than computational solutions. The corpus contains
-primarily worked exam corrections, not pedagogical explanations, so
-retrieval is unlikely to surface useful material for this type of query.
-The Prompt-Only system, unconstrained by irrelevant retrieved context,
-could generate pedagogical responses freely.
+Hybrid 2.92). The retrieval analysis confirms that this is not a retrieval
+failure in the distance sense—all three Category~C queries achieved
+distances below 0.92—but rather a content-type mismatch: coaching questions
+need pedagogical explanations, and the corpus contains only worked
+corrections.
 
 Category~B (novel questions) was the only category where the Hybrid engine
-(3.30) outperformed the RAG system (3.00) by a meaningful margin. Novel
-questions are, by design, not present in the corpus, so retrieval quality
-is expected to be poor. The Hybrid engine's ability to fall back to
-curriculum-encoded knowledge in Cases~B and~C may have helped here, though
-the difference is modest.
+(3.30) outperformed the RAG system (3.00) by a meaningful margin. Despite
+all Category~B queries falling into Case~A, the chapter match rate was
+higher for this category (3 of 5 matched), which may have provided the
+Hybrid engine with slightly more relevant context to work with.
 
 The guardrail results (4/4 for all systems) confirm that the syllabus guard
 mechanism works as intended regardless of the retrieval strategy. Since all
