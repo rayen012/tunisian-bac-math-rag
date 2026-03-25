@@ -1,117 +1,23 @@
-% =============================================================================
-%  CHAPTER 1 — INTRODUCTION (~5% of thesis, ~2-3 pages)
-% =============================================================================
-\section{Introduction}
-\label{sec:introduction}
+\chapter{Introduction}
 
-\subsection{Motivation}
-\label{subsec:motivation}
+\section{Motivation}
+In the Tunisian educational landscape, the Baccalaureate examination represents a critical socio-economic milestone. For decades, the high-stakes nature of this exam has fueled a massive "shadow education" system, where private tutoring is viewed as an essential requirement for success.Tunisian households invest a lot of money monthly per student in private instruction. Despite this heavy financial burden, traditional tutoring remains limited by logistical constraints, such as large group sizes and restricted weekly availability. Furthermore, many students face psychological barriers, hesitating to address fundamental conceptual gaps due to the social friction inherent in group-based learning.
 
-The Tunisian Baccalaureate (Baccalaur\'{e}at) mathematics examination,
-particularly for the Section Math\'{e}matiques track, is a high-stakes
-national assessment that determines university admission for thousands of
-students each year. Unlike standardized tests in other countries, the Tunisian
-Bac demands not only correct mathematical reasoning but also strict adherence
-to a specific \textit{correction redaction style}—a formal writing convention
-that dictates how proofs, derivations, and solutions must be structured and
-phrased in French. Students who produce correct answers but fail to follow
-this style risk losing significant marks.
+The emergence of Large Language Models (LLMs) offers a potential democratization of this specialized support. In global contexts, LLMs provide 24/7  access to personalized learning, allowing students to resolve queries without social anxiety. However, for the Tunisian context, general-purpose models like (ChatGPT , gemini.... ) frequently prove insufficiency . These models often provide solutions that are  not  from the official Tunisian Ministry of Education curriculum, utilizing foreign methodologies or unconventional mathematical formalisms (redaction) that can lead to point deductions during official grading.
 
-Despite the widespread adoption of large language models (LLMs) in
-educational technology~\cite{kasneci2023chatgpt_education}, no existing AI
-tutoring system addresses the specific needs of Tunisian Bac mathematics
-students. General-purpose chatbots such as ChatGPT lack knowledge of the
-Tunisian curriculum boundaries—they may suggest methods from university-level
-mathematics that are explicitly outside the Bac program—and they cannot
-reproduce the distinctive correction style expected by Tunisian examiners.
+\section{Problem Statement}
+While current state-of-the-art multimodal LLMs provide impressive general reasoning, they lack "curriculum-alignment" for localized national exams. In the domain of Mathematics, the specific logic and redaction style required in Tunisian conventions are not fully captured by base models. Consequently, students attempting to use AI for revision face a high risk of "hallucination" regarding regional pedagogical standards. There is a clear research gap in creating a specialized AI agent that combines the reasoning power of modern LLMs with a strictly grounded knowledge base of official Tunisian exam archives and methodologies.
 
-This gap motivates the central question of this thesis: \textbf{Can a
-Retrieval-Augmented Generation system, grounded in a curated corpus of
-Tunisian Bac materials, produce curriculum-faithful answers that respect the
-official correction style?}
+\section{Research Objectives}
+This thesis aims to bridge the gap between global AI capabilities and local educational requirements. We evaluate different augmentation strategies, primarily Retrieval-Augmented Generation (RAG), to develop an AI-based Mathematics tutor tailored for the Tunisian Baccalaureate (Mathematics section). By indexing a specialized dataset of official exams, handwritten corrections, and textbook materials, we aim to provide a system that adheres to Tunisian "redaction" standards while offering the personalized support typical of a high-level private tutor.
 
-\subsection{Problem Statement}
-\label{subsec:problem-statement}
+\section{Thesis Structure}
 
-Building an effective AI tutor for this domain requires addressing three
-interrelated challenges:
-
-\begin{enumerate}
-    \item \textbf{Curriculum fidelity.} The system must answer exclusively
-    within the boundaries of the Tunisian Bac program. Using methods from
-    outside the curriculum (e.g., university-level analysis or algebra) is
-    not only unhelpful but actively harmful to exam preparation.
-
-    \item \textbf{Correction style mimicry.} Answers must follow the specific
-    rhetorical patterns of official Tunisian corrections, including standard
-    French mathematical phrasing (``On a\ldots'', ``Or\ldots'',
-    ``Donc\ldots'', ``D'apr\`{e}s\ldots'') and structured proof layouts.
-
-    \item \textbf{Document availability.} No machine-readable corpus of
-    Tunisian Bac materials exists. The primary sources are printed booklets,
-    handwritten corrections, and scanned pages that must be digitized before
-    any retrieval system can operate on them.
-\end{enumerate}
-
-\subsection{Approach}
-\label{subsec:approach}
-
-We address these challenges through a Retrieval-Augmented Generation (RAG)
-pipeline~\cite{lewis2020rag} specifically designed for the Tunisian Bac
-mathematics domain. The system comprises:
-
-\begin{itemize}
-    \item A \textbf{digitization pipeline} that converts scanned mathematical
-    documents into machine-readable LaTeX using multimodal LLMs.
-
-    \item A \textbf{vector database} built on ChromaDB~\cite{chromadb2024}
-    with BGE-M3 multilingual embeddings~\cite{chen2024bge_m3}, indexed with
-    rich metadata (chapter, year, session, document type).
-
-    \item A \textbf{two-stage retrieval mechanism} that first searches
-    corrected exercises for style exemplars, then falls back to course
-    material for theorem backing.
-
-    \item A \textbf{prompt compilation layer} that instructs the LLM to mimic
-    the correction style when similar exercises are found, or construct
-    answers from theorems when they are not.
-\end{itemize}
-
-To evaluate the RAG approach, we implement and compare two additional
-baselines: a \textbf{prompt-only} system that encodes the entire curriculum
-into the system prompt without retrieval, and a \textbf{hybrid} system that
-dynamically routes queries between RAG and prompt-only modes based on
-retrieval confidence.
-
-\subsection{Contributions}
-\label{subsec:contributions}
-
-The main contributions of this thesis are:
-
-\begin{enumerate}
-    \item The first publicly available digitized corpus of Tunisian
-    Baccalaureate mathematics materials, processed from raw scans into
-    structured LaTeX.
-
-    \item A domain-specific RAG architecture with two-stage retrieval
-    designed for curriculum fidelity and correction style mimicry.
-
-    \item A systematic comparison of three generation approaches (RAG,
-    prompt-only, hybrid) on the Tunisian Bac mathematics domain.
-
-    \item An open-source implementation deployable on Google Cloud Platform,
-    including a Streamlit-based interactive tutoring interface.
-\end{enumerate}
-
-\subsection{Thesis Structure}
-\label{subsec:thesis-structure}
-
-The remainder of this thesis is organized as follows.
-Section~\ref{sec:background} reviews the relevant background on large
-language models, retrieval-augmented generation, and AI in education.
-Section~\ref{sec:methodology} describes the system architecture and
-implementation in detail. Section~\ref{sec:experiments} presents the
-experimental setup, evaluation methodology, and results.
-Section~\ref{sec:discussion} interprets the findings and discusses
-limitations. Section~\ref{sec:conclusion} concludes with a summary and
-directions for future work.
+The structure  of this thesis is organized as follows. Chapter 2 reviews the
+background and related work relevant to large language models, retrieval-
+augmented generation, prompt engineering, hybrid architectures, and AI in
+mathematics education. Chapter 3 describes the methodology and implementation
+of the three systems developed in this thesis: the RAG system, the
+prompt-only baseline, and the hybrid engine. Chapter 4 presents the
+evaluation results. Chapter 5 discusses these findings and their
+implications, and Chapter 6 concludes the thesis.
