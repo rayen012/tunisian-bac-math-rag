@@ -6,20 +6,24 @@
 \addcontentsline{toc}{section}{Appendices}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection*{Appendix A — Evaluation Question Bank}
-\addcontentsline{toc}{subsection}{Appendix A — Evaluation Question Bank}
+\subsection*{Appendix A — Evaluation Questions}
+\addcontentsline{toc}{subsection}{Appendix A — Evaluation Questions}
 \label{app:questions}
 
-The evaluation used 20 questions across five categories, designed to test
-distinct aspects of system capability. Categories~A--D (15 questions) were
-scored by the blind human evaluation; Category~E (4 questions) was evaluated
-on a binary guardrail basis. Table~\ref{tab:app-questions} lists all
-questions.
+We used 20 questions in total, split into five categories. The first four
+categories (A through D, 15 questions) were graded by the blind human
+evaluation described in Section~\ref{subsec:eval-setup}. The last category
+(E, 4 questions) only tested whether each system correctly refused
+out-of-scope requests — so those were scored on a simple pass/fail basis.
+
+Table~\ref{tab:app-questions} lists every question we used. We tried to
+cover the main chapters of the Bac program and to vary the difficulty and
+phrasing style across categories.
 
 \begin{table}[H]
 \centering
-\caption{Complete evaluation question bank. Mode: \textit{corr.} = correction
-mode; \textit{coach.} = coaching mode.}
+\caption{All 20 evaluation questions. ``corr.'' stands for correction mode,
+``coach.'' for coaching mode.}
 \label{tab:app-questions}
 \small
 \begin{tabularx}{\textwidth}{l l l l X}
@@ -101,23 +105,19 @@ Résoudre l'intégrale de Lebesgue $\int_a^b f\,d\mu$ pour $f$ mesurable. \\
 \end{tabularx}
 \end{table}
 
-\paragraph{Category descriptions.}
-\begin{description}[style=nextline, leftmargin=1.5cm, labelwidth=1cm]
-    \item[A — Direct Bac-style] Questions that closely resemble real
-    Baccalaureate exam problems. The RAG system should find matching
-    corrections in the corpus. Tests retrieval precision.
-    \item[B — Novel chapter-based] Same Bac topics but with novel problems
-    not present verbatim in the corpus. Tests generalization from retrieved
-    examples.
-    \item[C — Student informal] Informal French phrasing, as a real Tunisian
-    student would type. Tests pedagogical quality and coaching mode.
-    \item[D — Derja / mixed-language] Questions in Tunisian Arabic (Derja) or
-    French--Derja code-switching. Tests multilingual robustness of BGE-M3
-    embeddings and the generation model.
-    \item[E — Out-of-scope guardrail] Methods outside the Tunisian Bac
-    program. All three systems should refuse or explicitly flag the method
-    as \textit{hors programme}.
-\end{description}
+\paragraph{What each category tests.}
+Category~A questions are classic Bac problems that the RAG corpus should
+contain close matches for — they test whether retrieval actually finds the
+right correction. Category~B covers the same topics but with problems we
+wrote ourselves, so they are not in the corpus verbatim; this tests whether
+the system can generalize from similar examples. Category~C uses informal
+French, the way a real student would type on their phone (``je comprends
+pas\ldots'', ``c'est quoi\ldots''). Category~D goes further with Tunisian
+Derja or French--Derja code-switching, which tests how well the embedding
+model and the LLM handle mixed-language input. Finally, Category~E contains
+methods that are explicitly outside the Bac program (L'H\^opital,
+diagonalization, Taylor series, Lebesgue integration) — all three systems
+should refuse these.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -127,76 +127,64 @@ Résoudre l'intégrale de Lebesgue $\int_a^b f\,d\mu$ pour $f$ mesurable. \\
 
 \subsubsection*{B.1\quad Grading Criteria}
 
-Each of the 15 graded questions (categories A--D) was scored independently
-for each of the three systems on four criteria, each on a 0--5 integer
-scale. The criteria are equally weighted; no composite score was computed
-during grading.
+The evaluator scored each system's answer on four criteria, each on a 0
+to~5 scale. We gave equal weight to all four — no aggregate score was
+imposed during grading so that the teacher could focus on each dimension
+independently.
 
 \begin{table}[H]
 \centering
-\caption{Grading rubric used by the blind evaluator.}
+\caption{The four-criterion rubric used during blind grading.}
 \label{tab:app-rubric}
 \small
 \begin{tabularx}{\textwidth}{l X l}
 \toprule
-\textbf{Criterion} & \textbf{Description} & \textbf{Scale} \\
+\textbf{Criterion} & \textbf{What the evaluator looked for} & \textbf{Scale} \\
 \midrule
 Mathematical correctness &
-Are the computations and reasoning steps mathematically valid?
-0 = entirely incorrect; 5 = fully correct solution.
+Are the calculations right? Is the reasoning valid step by step?
+A 0 means completely wrong; a 5 means fully correct.
 & 0--5 \\
 \addlinespace
 Reasoning clarity &
-Is the reasoning clear, logical, and well-structured?
-Are the steps easy to follow?
+Is the solution easy to follow? Are the steps laid out in a logical
+order, or does the reader have to guess what happened between lines?
 & 0--5 \\
 \addlinespace
 Pedagogical quality &
-Does the answer help the student \textit{understand} the method,
-not merely obtain the result? Does it have educational value beyond
-a bare computation?
+Does the answer actually help a student \textit{learn}, or does it
+just dump a result? Does it explain the ``why'' behind each step?
 & 0--5 \\
 \addlinespace
 Bac style adherence &
-Does the answer resemble an official Tunisian Bac correction?
-Formal conventions (``On a\ldots'', ``Donc\ldots''),
-academic French, expected level of detail.
+Does it look like an official Tunisian Bac correction? Formal
+phrasing (``On a\ldots'', ``Donc\ldots'', ``D'après\ldots''),
+proper academic French, the right level of detail.
 & 0--5 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\subsubsection*{B.2\quad Blind Evaluation Procedure}
+\subsubsection*{B.2\quad How We Kept It Blind}
 
-For each of the 15 graded questions, the three system outputs were randomly
-shuffled using a per-question fixed random seed and presented under anonymous
-labels (\textit{Système~X}, \textit{Système~Y}, \textit{Système~Z}). The
-mapping between labels and real system identities varied from one question to
-the next. The evaluator---an experienced Tunisian Baccalaureate mathematics
-teacher---did not know which label corresponded to which system at any point
-during grading.
+To avoid any bias, we never showed the teacher which system produced which
+answer. For each of the 15 graded questions, we randomly shuffled the three
+outputs and relabeled them \textit{Système~X}, \textit{Système~Y}, and
+\textit{Système~Z}. The shuffle used a different random seed per question,
+so the labels did not map to the same system from one question to the next.
 
-The anonymous answer sheets and empty grading templates were generated
-programmatically (\texttt{generate\_grading\_sheets.py}) from the raw system
-outputs. After grading was complete, the answer key was used to unmask system
-identities and compute per-system statistics
-(\texttt{analyze\_grades.py}).
+We generated the anonymous answer sheets and empty scoring templates with a
+script (\texttt{generate\_grading\_sheets.py}) and printed them out for the
+teacher. Once all the grades were in, we ran a second script
+(\texttt{analyze\_grades.py}) to unmask the system identities and compute
+the final statistics.
 
-\subsubsection*{B.3\quad Sample Blind Grading Sheet}
+\subsubsection*{B.3\quad What the Grading Sheet Looked Like}
 
-Figure~\ref{fig:blind-sheet-sample} shows the format presented to the
-evaluator for a single question. System identities are hidden behind
-anonymous labels; the four scoring rows are empty for the evaluator to fill.
-
-% TODO: Replace with actual screenshot or reproduction of the grading sheet.
-% If a screenshot is available, use:
-% \begin{figure}[H]
-% \centering
-% \includegraphics[width=0.85\textwidth]{figures/blind_grading_sheet_sample.png}
-% \caption{Sample blind grading sheet as presented to the evaluator.
-% System identities are hidden behind anonymous labels (Système X/Y/Z).}
-% \label{fig:blind-sheet-sample}
-% \end{figure}
+Figure~\ref{fig:blind-sheet-sample} shows a mock-up of what the teacher
+saw for a single question. The three system outputs appeared under anonymous
+labels, and the scoring table was left blank for the teacher to fill in by
+hand.
 
 \begin{figure}[H]
 \centering
@@ -205,9 +193,9 @@ anonymous labels; the four scoring rows are empty for the evaluator to fill.
 \textit{Résoudre dans $\mathbb{C}$ l'équation $z^2 - 4z + 8 = 0$.
 Écrire les solutions sous forme trigonométrique.} \\[0.5em]
 \hrule\vspace{0.5em}
-\textbf{Système X:} \textit{[Full system output displayed here]} \\[0.3em]
-\textbf{Système Y:} \textit{[Full system output displayed here]} \\[0.3em]
-\textbf{Système Z:} \textit{[Full system output displayed here]} \\[0.5em]
+\textbf{Système X:} \textit{[answer displayed here]} \\[0.3em]
+\textbf{Système Y:} \textit{[answer displayed here]} \\[0.3em]
+\textbf{Système Z:} \textit{[answer displayed here]} \\[0.5em]
 \hrule\vspace{0.5em}
 \begin{tabular}{l|c|c|c}
 \textbf{Critère} & \textbf{Sys.\ X} & \textbf{Sys.\ Y} & \textbf{Sys.\ Z} \\
@@ -218,9 +206,9 @@ Qualité pédagogique (0--5)     & \phantom{00}/5 & \phantom{00}/5 & \phantom{00
 Style Bac (0--5)               & \phantom{00}/5 & \phantom{00}/5 & \phantom{00}/5 \\
 \end{tabular}
 }}
-\caption{Sample blind grading sheet as presented to the evaluator. System
-identities are hidden behind anonymous labels (Système X/Y/Z). The mapping
-varies per question.}
+\caption{Mock-up of the blind grading sheet. The teacher saw three anonymous
+outputs per question and filled in the four scores for each. The X/Y/Z
+mapping changed from one question to the next.}
 \label{fig:blind-sheet-sample}
 \end{figure}
 
@@ -230,23 +218,22 @@ varies per question.}
 \addcontentsline{toc}{subsection}{Appendix C — Prompt Templates}
 \label{app:prompts}
 
-This appendix reproduces the system prompts used by each of the three
-engines. All prompts are in French, matching the target language of the
-Tunisian Baccalaureate mathematics program. Prompts are lightly reformatted
-for page width; the semantic content is unmodified.
+Below are the system prompts we used for each engine. They are all in
+French since that is the language of the Tunisian Bac math program. We
+reformatted them slightly to fit the page, but the actual content is
+unchanged. The full source code is available in the repository.
 
 % ·······································································
-\subsubsection*{C.1\quad RAG Engine System Prompt}
+\subsubsection*{C.1\quad RAG Engine}
 \label{app:prompt-rag}
 
-The RAG system prompt (\textasciitilde2{,}300 characters) conditions the
-model on the retrieved context and enforces strict anti-hallucination rules.
-It contains 7 sections: identity, objective, RAG rules
-(anti-hallucination + anti-injection), decision tree (mimicry), the
-``Sandwich Tounsi'' style, a mandatory response format, and a list of
-forbidden methods.
+This is the shortest prompt (around 2{,}300 characters). It tells the model
+to stick strictly to the retrieved documents. The main idea is: if
+something is not in the context, say so — do not make it up. It also
+includes a ``mimicry'' decision tree that tells the model to copy the style
+of whichever correction it finds in the context.
 
-\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={RAG engine system prompt (rag\_engine.py).}, label={lst:prompt-rag}]
+\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={RAG engine system prompt (from \texttt{rag\_engine.py}).}, label={lst:prompt-rag}]
 Tu es "Monsieur Tounsi", professeur tunisien de mathematiques
 specialise Baccalaureat (Section Maths).
 
@@ -292,18 +279,17 @@ INTERDIT:
 \end{lstlisting}
 
 % ·······································································
-\subsubsection*{C.2\quad Prompt-Only Engine System Prompt}
+\subsubsection*{C.2\quad Prompt-Only Engine}
 \label{app:prompt-po}
 
-The Prompt-Only system prompt (\textasciitilde4{,}600 characters) is the
-largest of the three. Without retrieval, it compensates by embedding the
-full 10-chapter curriculum inventory directly into the prompt, along with
-10 distinct components: identity, curriculum knowledge, syllabus guard,
-Sandwich Tounsi style, reasoning guardrails, hallucination control,
-self-verification (mental + visible), refusal policy, and confidence
-calibration.
+This is the longest prompt (around 4{,}600 characters). Since there is no
+retrieval at all, the prompt has to do everything: it embeds the entire
+10-chapter curriculum inventory so the model knows what is and is not in the
+Bac program, and it includes ten separate ``components'' — from reasoning
+guardrails to a confidence calibration system. The idea was to compensate
+for the lack of external documents with very detailed instructions.
 
-\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={Prompt-Only engine system prompt --- 10-component architecture (prompt\_only\_engine.py). Curriculum inventory abridged for space.}, label={lst:prompt-po}]
+\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={Prompt-Only system prompt (from \texttt{prompt\_only\_engine.py}). The curriculum inventory is shortened here to save space — the real version lists specific theorems for each chapter.}, label={lst:prompt-po}]
 Tu es "Monsieur Tounsi", professeur tunisien de mathematiques
 specialise dans la preparation au Baccalaureat (Section Mathematiques).
 
@@ -319,8 +305,8 @@ au lycee tunisien. Tu connais par coeur :
 INVENTAIRE DU PROGRAMME PAR CHAPITRE
 [10 chapters: Suites, Fonctions, Derivation, Integration,
  Eq. Differentielles, Complexes, Geometrie, Probabilites,
- Arithmetique, Logarithme/Exponentielle -- each with explicit
- list of theorems and methods allowed in the Bac program]
+ Arithmetique, Logarithme/Exponentielle -- each listing the
+ specific theorems and methods that are part of the Bac program]
 
 METHODES INTERDITES (hors programme):
 - Regle de L'Hopital, Series de Taylor, Diagonalisation de matrices,
@@ -333,20 +319,20 @@ STYLE "SANDWICH TOUNSI"
 
 COMPOSANT 3 : GARDES-FOU DE RAISONNEMENT
 Avant de repondre, effectue mentalement :
-1. IDENTIFIER : chapitre, type d'exercice
-2. RAPPELER : theoremes applicables
-3. VERIFIER : methode au programme? (sinon REFUSE)
-4. PLANIFIER : etapes de resolution
-5. RESOUDRE : etape par etape
-6. VERIFIER : resultat coherent?
+1. IDENTIFIER le chapitre et le type d'exercice
+2. RAPPELER les theoremes qui s'appliquent
+3. VERIFIER que la methode est au programme (sinon REFUSE)
+4. PLANIFIER les etapes
+5. RESOUDRE etape par etape
+6. VERIFIER la coherence du resultat
 
 COMPOSANT 5 : CONTROLE DES HALLUCINATIONS
 SANS base de donnees, sois EXTRA-VIGILANT :
 - Ne cite JAMAIS un numero d'exercice/page sans certitude absolue
-- Si incertain -> montre les deux cas possibles
+- Si tu n'es pas sur -> montre les deux cas possibles
 
 COMPOSANT 7-8 : AUTO-VERIFICATION (mentale + visible)
-Apres la solution, verifie : calculs, signes, cas limites, conclusion.
+Apres la solution, verifie calculs, signes, cas limites, conclusion.
 Ajoute un bloc visible : **Verification : [description]**
 
 COMPOSANT 9 : POLITIQUE DE REFUS
@@ -357,23 +343,30 @@ Indique : ELEVEE / MOYENNE / FAIBLE avec justification
 \end{lstlisting}
 
 % ·······································································
-\subsubsection*{C.3\quad Hybrid Engine System Prompts}
+\subsubsection*{C.3\quad Hybrid Engine}
 \label{app:prompt-hybrid}
 
-The Hybrid engine uses three distinct system prompts, selected at runtime
-based on the retrieval routing case.
+The Hybrid engine does not use a single prompt — it picks one of three
+depending on how good the retrieval was. The selection happens at query
+time based on the L2 distance of the best retrieved document:
 
-\paragraph{Case~A (strong retrieval, $d \leq 1.2$).}
-Identical in structure to the RAG prompt (\textasciitilde2{,}000 characters).
-The model is instructed to rely primarily on the retrieved context,
-mimicking the style of found corrections.
+\begin{itemize}[nosep]
+    \item $d \leq 1.2$ \textrightarrow{} \textbf{Case~A} (strong match):
+    uses a prompt almost identical to the RAG engine's. The model is told to
+    rely on the retrieved documents.
+    \item $1.2 < d \leq 1.6$ \textrightarrow{} \textbf{Case~B} (partial
+    match): a hybrid prompt that gives the model both the retrieved documents
+    \textit{and} the embedded curriculum. Five rules tell it how to combine
+    the two sources and how to cite each one.
+    \item $d > 1.6$ \textrightarrow{} \textbf{Case~C} (no useful match):
+    essentially the same as the Prompt-Only prompt, plus an explicit warning
+    that no database could answer the question.
+\end{itemize}
 
-\paragraph{Case~B (partial match, $1.2 < d \leq 1.6$).}
-A hybrid prompt (\textasciitilde3{,}200 characters) that provides both the
-retrieved documents and an embedded curriculum inventory. Five rules govern
-the interaction between these two knowledge sources:
+The most interesting part is the Case~B rules, which govern how the model
+should mix retrieved content with its own knowledge:
 
-\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={Hybrid engine Case~B rules (hybrid\_engine.py).}, label={lst:prompt-hybrid-b}]
+\begin{lstlisting}[style=plain, basicstyle=\scriptsize\ttfamily, breaklines=true, frame=single, caption={The five hybrid rules from the Case~B prompt (\texttt{hybrid\_engine.py}).}, label={lst:prompt-hybrid-b}]
 REGLES HYBRIDES:
 1. Utilise les DOCUMENTS RECUPERES quand ils sont pertinents
    -- cite-les explicitement.
@@ -388,20 +381,10 @@ REGLES HYBRIDES:
    officiel -> PRIVILEGIE le programme.
 \end{lstlisting}
 
-\paragraph{Case~C (no useful match, $d > 1.6$).}
-Structurally identical to the Prompt-Only prompt (\textasciitilde2{,}800
-characters), with the addition of an explicit hallucination warning:
-``AUCUNE base de données n'a pu répondre à cette question.'' This prompt
-includes the curriculum inventory and all self-verification components.
-
-\paragraph{Prompt selection logic.}
-The Hybrid engine selects the prompt at query time based on the best L2
-distance from the first retrieval pass:
-\begin{itemize}[nosep]
-    \item $d \leq 1.2$: Case~A prompt (retrieval-first)
-    \item $1.2 < d \leq 1.6$: Case~B prompt (hybrid)
-    \item $d > 1.6$: Case~C prompt (knowledge-only)
-\end{itemize}
+As discussed in Section~\ref{subsec:rag-hybrid-discussion}, the evaluation
+ended up routing all 19 queries to Case~A, so Cases~B and~C were never
+actually triggered. This is something we would want to fix with better
+threshold calibration in future work.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -409,33 +392,31 @@ distance from the first retrieval pass:
 \addcontentsline{toc}{subsection}{Appendix D — Digitization Pipeline Sample}
 \label{app:digitization-sample}
 
-This appendix illustrates the four stages of the digitization pipeline on a
-single page from a Baccalaureate correction document.
+To give a concrete sense of what the digitization pipeline does, this
+appendix is meant to show the four stages of processing on a single page
+from a Bac correction document: (1) the raw scan, (2) the Gemini OCR
+output, (3) the cleaned-up \LaTeX{}, and (4) the final chunk as stored in
+ChromaDB with its metadata.
 
-% TODO: Add actual figures. The pipeline stages are:
-% 1. Raw scan (PDF page image)
-% 2. Gemini OCR output (raw LaTeX)
-% 3. Post-processed LaTeX (after cleanup)
-% 4. Final chunk as stored in ChromaDB (with metadata)
+% TODO: Add actual figures before final submission. Suggested layout:
 %
-% Recommended figure layout:
 % \begin{figure}[H]
 % \centering
 % \begin{subfigure}[t]{0.48\textwidth}
 %     \includegraphics[width=\textwidth]{figures/pipeline_1_scan.png}
-%     \caption{Raw scan (Bac 2023, Exercice 3).}
+%     \caption{Raw scan (e.g. Bac 2023, Exercice 3).}
 % \end{subfigure}
 % \hfill
 % \begin{subfigure}[t]{0.48\textwidth}
 %     \begin{lstlisting}[basicstyle=\tiny\ttfamily, breaklines=true]
-%     [OCR output here]
+%     [Gemini OCR output here]
 %     \end{lstlisting}
-%     \caption{Gemini multimodal OCR output (LaTeX).}
+%     \caption{Gemini multimodal OCR output (raw LaTeX).}
 % \end{subfigure}
 % \\[1em]
 % \begin{subfigure}[t]{0.48\textwidth}
 %     \begin{lstlisting}[basicstyle=\tiny\ttfamily, breaklines=true]
-%     [Post-processed LaTeX here]
+%     [Cleaned LaTeX here]
 %     \end{lstlisting}
 %     \caption{Post-processed LaTeX after cleanup.}
 % \end{subfigure}
@@ -444,14 +425,11 @@ single page from a Baccalaureate correction document.
 %     \begin{lstlisting}[basicstyle=\tiny\ttfamily, breaklines=true]
 %     [ChromaDB chunk with metadata here]
 %     \end{lstlisting}
-%     \caption{Final chunk stored in ChromaDB.}
+%     \caption{Final chunk as stored in ChromaDB.}
 % \end{subfigure}
-% \caption{Digitization pipeline: from raw scan to indexed chunk.}
+% \caption{The four stages of the digitization pipeline on a single page.}
 % \label{fig:pipeline-sample}
 % \end{figure}
-%
-% For now, this appendix is a placeholder. Uncomment and populate the figure
-% above with actual pipeline samples before final submission.
 
-\textit{[To be populated with actual pipeline samples before final
-submission. See comments in source for the recommended figure layout.]}
+\textit{[To be added before final submission --- see comments in the source
+for the figure layout.]}
