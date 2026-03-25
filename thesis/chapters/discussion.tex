@@ -1,7 +1,4 @@
-% =============================================================================
-%  CHAPTER 5 — DISCUSSION
-% =============================================================================
-\section{Discussion}
+\chapter{Discussion}
 \label{sec:discussion}
 
 The blind evaluation produced a clear ranking: Prompt-Only outperformed
@@ -9,8 +6,6 @@ both the RAG system and the Hybrid engine on every criterion and in every
 question category. This section discusses why, what it means for retrieval
 in this domain, and what limits the conclusions we can draw.
 
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Why Prompt-Only Won}
 \label{subsec:interpretation}
 
@@ -41,8 +36,6 @@ topics to cover, how to reason, when to express uncertainty—without
 constraining where the knowledge comes from. This turns out to be more
 effective than retrieval for the current setup.
 
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Why RAG and Hybrid Scored Lower}
 \label{subsec:rag-hybrid-discussion}
 
@@ -90,8 +83,6 @@ fit: the student wants a conceptual explanation, and the system retrieves
 worked solutions to different exercises. This likely explains the large
 Category~C gap (Prompt-Only 4.75 vs.\ RAG 3.33).
 
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{What This Means for Retrieval in Education}
 \label{subsec:value-of-retrieval}
 
@@ -117,8 +108,6 @@ retrieval can perform worse than the base model alone, because irrelevant
 context misleads the generator. Our results are a concrete instance of this
 observation in the educational domain.
 
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Limitations}
 \label{subsec:limitations}
 
@@ -201,7 +190,6 @@ the generative model's entire solution. This affects only the RAG and
 Hybrid systems, giving the Prompt-Only baseline an inherent advantage.
 
 
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Comparison with Related Work}
 \label{subsec:comparison-related-work}
 
