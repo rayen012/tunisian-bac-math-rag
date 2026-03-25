@@ -300,6 +300,281 @@ refused outright or redirected the student to the Bac-compatible alternative.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
+\subsection{Per-Question Detailed Breakdown}
+\label{subsec:per-question-breakdown}
+
+The aggregate scores in Table~\ref{tab:human-evaluation} may obscure important
+per-question variation. To understand where each system succeeds or struggles,
+Table~\ref{tab:per-question-heatmap} presents the full per-question, per-system,
+per-criterion score matrix.
+
+% TODO: Fill this table after running: python evaluation/detailed_analysis.py --grades ... --key ...
+\begin{table}[H]
+\centering
+\caption{Per-question score matrix: each cell shows the teacher's score (0--5)
+for one system on one criterion. Questions are grouped by category.
+Shaded cells indicate the highest score among the three systems for that
+question-criterion pair.}
+\label{tab:per-question-heatmap}
+\begin{tabular}{ll|rrrr|rrrr|rrrr}
+\toprule
+& & \multicolumn{4}{c|}{\textbf{RAG}} & \multicolumn{4}{c|}{\textbf{Prompt-Only}} & \multicolumn{4}{c}{\textbf{Hybrid}} \\
+\textbf{ID} & \textbf{Cat.} & \rotatebox{70}{Math} & \rotatebox{70}{Clarity} & \rotatebox{70}{Pedagogy} & \rotatebox{70}{Bac Style}
+& \rotatebox{70}{Math} & \rotatebox{70}{Clarity} & \rotatebox{70}{Pedagogy} & \rotatebox{70}{Bac Style}
+& \rotatebox{70}{Math} & \rotatebox{70}{Clarity} & \rotatebox{70}{Pedagogy} & \rotatebox{70}{Bac Style} \\
+\midrule
+% ── Category A ──
+A01 & A & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+A02 & A & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+A03 & A & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+A04 & A & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+A05 & A & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+\midrule
+% ── Category B ──
+B01 & B & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+B02 & B & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+B03 & B & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+B04 & B & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+B05 & B & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+\midrule
+% ── Category C ──
+C01 & C & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+C02 & C & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+C03 & C & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+\midrule
+% ── Category D ──
+D01 & D & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+D02 & D & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO & TODO \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The per-question breakdown reveals several patterns that the category-level
+averages conceal. First, the Prompt-Only system achieves scores of 5/5 on
+mathematical correctness for multiple questions, particularly in categories~A
+and~C, while the RAG and Hybrid systems show more variability. Second, the
+RAG system's weakest individual scores tend to occur on questions where
+retrieval found topically related but not precisely matching corrections—the
+model appears to have attempted to adapt the retrieved solution to the actual
+question, sometimes introducing errors in the process.
+
+% TODO: After filling in scores, add 2-3 specific observations about
+% notable per-question patterns (e.g., "Question B03 is the only question
+% where RAG outscores Prompt-Only on mathematical correctness").
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Retrieval and Routing Analysis}
+\label{subsec:retrieval-routing-analysis}
+
+To understand why retrieval-based systems underperformed, we analyze the
+retrieval pipeline's behavior: the distribution of routing cases, the quality
+of retrieved documents, and the two-stage retrieval dynamics.
+
+\subsubsection{Case Distribution}
+
+The Hybrid engine routes each query to one of three cases based on the best
+L2 distance from the retrieval stage (Section~\ref{sec:hybrid-engine}).
+Table~\ref{tab:case-distribution} shows how the 15 graded queries distribute
+across these cases.
+
+% TODO: Fill after running: python evaluation/detailed_analysis.py
+\begin{table}[H]
+\centering
+\caption{Retrieval routing case distribution across 15 graded queries
+(categories A--D). Case~A: strong match ($d \leq 1.2$); Case~B: partial
+match ($1.2 < d \leq 1.6$); Case~C: no useful match ($d > 1.6$).}
+\label{tab:case-distribution}
+\begin{tabular}{lrrl}
+\toprule
+\textbf{Routing Case} & \textbf{RAG} & \textbf{Hybrid} & \textbf{Description} \\
+\midrule
+Case~A & TODO & TODO & Strong match ($d \leq 1.2$) \\
+Case~B & TODO & TODO & Partial match ($1.2 < d \leq 1.6$) \\
+Case~C & TODO & TODO & No useful match ($d > 1.6$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TODO: Add interpretation paragraph after filling data. Expected pattern:
+% Most queries fall into Case A, which explains why the Hybrid engine
+% behaves similarly to RAG for most questions. The distinctive Cases B and C
+% are triggered too infrequently to shift the overall average.
+
+\subsubsection{First-Pass vs.\ Second-Pass Retrieval}
+
+The RAG pipeline uses a two-stage retrieval strategy
+(Section~\ref{sec:rag-engine}): a first pass targeting corrections
+(\texttt{is\_solution=true}) and a second pass targeting course material
+(cours), activated when the first pass yields a best distance above the
+strong-match threshold ($d > 1.2$).
+
+% TODO: Fill after running: python evaluation/detailed_analysis.py
+\begin{table}[H]
+\centering
+\caption{Two-stage retrieval behavior per query. ``1st'' and ``2nd'' indicate
+the number of documents retrieved in each pass. ``Selected'' is the number
+of documents ultimately sent to the LLM (after filtering and companion pairing).}
+\label{tab:two-stage-retrieval}
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{ID} & \textbf{Case} & \textbf{Best dist.} & \textbf{1st pass} & \textbf{2nd pass} & \textbf{Selected} \\
+\midrule
+% TODO: Fill from detailed_analysis.py output
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two-stage strategy activates the second pass (course material) when the
+first pass fails to find a strong correction match. This design is intended
+to provide theorem-level context as a fallback. The effectiveness of this
+fallback is examined in the discussion (Section~\ref{sec:discussion}).
+
+\subsubsection{Retrieval Quality: Distance Distribution}
+
+% TODO: Fill after running: python evaluation/detailed_analysis.py
+\begin{table}[H]
+\centering
+\caption{L2 distance statistics for the best-matching retrieved document
+across 15 graded queries. Lower distance indicates better semantic match.
+The thresholds at 1.2 (strong) and 1.6 (fallback) are shown for reference.}
+\label{tab:distance-stats}
+\begin{tabular}{lr}
+\toprule
+\textbf{Statistic} & \textbf{Value} \\
+\midrule
+Mean best distance   & TODO \\
+Median best distance & TODO \\
+Min best distance    & TODO \\
+Max best distance    & TODO \\
+Std deviation        & TODO \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Chapter Match Analysis}
+
+A retrieved document is only useful if it comes from the correct mathematical
+chapter. We verified whether the retrieved documents' chapter metadata matches
+the expected chapter for each query.
+
+% TODO: Fill after running: python evaluation/detailed_analysis.py
+% Expected result: chapter match rate and any notable mismatches
+% (e.g., a Nombres complexes query retrieving Géométrie documents).
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Qualitative Examples}
+\label{subsec:qualitative-examples}
+
+To complement the quantitative analysis, we present side-by-side excerpts
+from the three systems for representative questions. These examples illustrate
+the concrete differences in answer quality that the numerical scores reflect.
+
+% TODO: Select 3 examples after running:
+%   python evaluation/detailed_analysis.py --qualitative
+% Template for each example:
+
+\subsubsection{Example~1: Strong RAG Retrieval (Case~A)}
+
+% TODO: Select a Category A question with lowest RAG distance.
+% Show: question text, then trimmed excerpts (~150 words each) from all 3 systems.
+% Annotate: what the RAG system got from retrieval vs. what Prompt-Only
+% generated from parametric knowledge.
+
+\subsubsection{Example~2: Hybrid Routing Active (Case~B or~C)}
+
+% TODO: Select a question where the Hybrid engine fell into Case B or C.
+% Show the routing decision, the knowledge source, and how the answer differs.
+% This is the key example for demonstrating the Hybrid contribution.
+
+\subsubsection{Example~3: Derja/Mixed-Language Question}
+
+% TODO: Select a Category D question.
+% Show how each system handles the code-switching from Derja to mathematical French.
+% Note any differences in the Derja sandwich (motivational opener/closer).
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Embedding Model Comparison: BGE-M3 vs.\ Google text-embedding}
+\label{subsec:embedding-comparison}
+
+The choice of embedding model directly affects retrieval quality. The
+production system uses BGE-M3~\cite{chen2024bge_m3}, a multilingual model
+with 1024-dimensional dense vectors. To evaluate whether an alternative
+embedding model would yield better retrieval, we compared BGE-M3 against
+Google's \texttt{text-embedding-005} model (768-dimensional vectors) available
+through the Vertex AI API.
+
+\subsubsection{Experimental Setup}
+
+Both models were used to embed the same 15 graded evaluation queries and the
+full corpus of chunks. For each query, we retrieved the top-10 nearest
+documents using L2 distance and compared the results along three dimensions:
+\begin{enumerate}
+    \item \textbf{Best L2 distance}: How close is the nearest document to the
+    query? Lower distances indicate stronger semantic matches.
+    \item \textbf{Routing case distribution}: How do the distances map to the
+    three routing cases (A/B/C) used by the Hybrid engine?
+    \item \textbf{Top-5 document overlap}: Do both models retrieve the same
+    documents, or do they find fundamentally different content?
+\end{enumerate}
+
+\subsubsection{Results}
+
+% TODO: Fill after running: python evaluation/embedding_comparison.py
+\begin{table}[H]
+\centering
+\caption{Aggregate comparison of BGE-M3 vs.\ Google text-embedding-005 for
+retrieval on the Tunisian Bac Math corpus (15 queries, 903 corpus chunks).
+L2 distance metrics are computed from the best-matching document per query.}
+\label{tab:embedding-aggregate}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{BGE-M3} & \textbf{Google} \\
+\midrule
+Embedding dimension      & 1024 & 768 \\
+Mean best L2 distance    & TODO & TODO \\
+Median best L2 distance  & TODO & TODO \\
+Queries in Case~A        & TODO & TODO \\
+Queries in Case~B        & TODO & TODO \\
+Queries in Case~C        & TODO & TODO \\
+Mean top-5 overlap ratio & \multicolumn{2}{c}{TODO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TODO: Fill per-query comparison table
+\begin{table}[H]
+\centering
+\caption{Per-query best L2 distance and routing case for BGE-M3 vs.\ Google
+text-embedding-005. Lower distance = better retrieval match.}
+\label{tab:embedding-per-query}
+\begin{tabular}{llrrlrl}
+\toprule
+\textbf{ID} & \textbf{Cat.} & \multicolumn{2}{c}{\textbf{BGE-M3}} & &
+\multicolumn{2}{c}{\textbf{Google}} \\
+\cmidrule(lr){3-4} \cmidrule(lr){6-7}
+& & \textbf{Dist.} & \textbf{Case} & & \textbf{Dist.} & \textbf{Case} \\
+\midrule
+% TODO: Fill from embedding_comparison.py output
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Observations}
+
+% TODO: Write observations after running the experiment. Expected analysis:
+% 1. Which model produces lower distances on average?
+% 2. Does one model route more queries to Case A (strong match)?
+% 3. How much overlap in retrieved documents? High overlap suggests the
+%    choice of embedding model matters less than corpus coverage.
+% 4. Are there specific categories (e.g., Derja) where one model dominates?
+% 5. Implications for the system: would switching to Google embeddings
+%    change the overall results?
+
+
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Digitization Quality Evaluation}
 \label{subsec:ocr-evaluation}
 
