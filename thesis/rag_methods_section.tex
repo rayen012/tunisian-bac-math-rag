@@ -1,986 +1,274 @@
 % =============================================================================
-%  THESIS CHAPTER — RAG SYSTEM: METHODS
-%  Tunisian Baccalaureate Mathematics — Retrieval-Augmented Generation
+%  RAG SYSTEM — detailed methods (included from methodology.tex)
 % =============================================================================
 
-\section{Retrieval-Augmented Generation System}
+\subsection{RAG System}
 \label{sec:rag-system}
 
-This section presents the design and implementation of the Retrieval-Augmented
-Generation (RAG) system, which constitutes the central technical contribution
-of this thesis. Unlike the Prompt-Only baseline described in
-Section~\ref{sec:prompt-only}, the RAG system grounds every answer in
-retrieved documents drawn from a curated corpus of Tunisian Baccalaureate
-mathematics material. The pipeline comprises six stages: data acquisition,
-mathematical document digitization, database construction and indexing,
-embedding model selection, two-stage retrieval, and answer generation. Each
-stage is described below with the reasoning behind every design decision,
-supported by relevant literature where available and explicitly marked as an
-implementation-specific choice where no direct precedent exists.
+This section presents the RAG system, which is the central technical
+contribution of this thesis. The pipeline has six components: data
+acquisition, digitization, database construction, embedding model selection,
+two-stage retrieval, and answer generation.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Data Acquisition and Paired Exercise–Correction Structure}
+\subsubsection{Data Acquisition}
 \label{subsec:data-acquisition}
 
-The foundation of any RAG system is the quality and structure of the knowledge
-base from which documents are retrieved~\cite{lewis2020rag, gao2024rag_survey}.
-Research on data quality in high-stakes AI systems has shown that downstream
-model performance is often dominated by data quality rather than model
-architecture, and that ``data cascades''---compounding quality issues
-originating in early data collection stages---are the most common cause of
-failure in deployed AI systems~\cite{sambasivan2021everyone}. This finding
-guided every design decision in our data acquisition process: we prioritized
-corpus quality, structural consistency, and faithful preservation of the
-original documents over corpus size.
+The foundation of any RAG system is the quality of its knowledge
+base~\cite{lewis2020rag, gao2024rag_survey}. Research on data quality in
+AI systems has shown that downstream performance is often dominated by data
+quality rather than model architecture, and that compounding quality issues
+from early data stages are the most common cause of
+failure~\cite{sambasivan2021everyone}. This guided our approach: we
+prioritized corpus quality and structural consistency over size.
 
-In our case, the target domain is the Tunisian Baccalaureate mathematics
-examination (Section Mathématiques), a national standardized test whose
-correction style follows precise rhetorical and logical conventions that
-students must reproduce in order to earn full marks. No publicly available,
-machine-readable corpus of these materials existed prior to this work; the
-primary sources are printed examination booklets, handwritten correction
-sheets, and scanned course pages distributed by experienced preparatory-class
-teachers.
+No publicly available, machine-readable corpus of Tunisian Bac mathematics
+materials existed before this work. The primary sources are printed
+examination booklets, handwritten corrections, and scanned course pages
+from preparatory-class teachers.
 
-\subsubsection{Physical Data Collection}
+\paragraph{Physical data collection.}
+The raw material was collected during a trip to Tunisia, where we obtained
+books and course materials from experienced Bac mathematics teachers. For
+printed material, a standard scanner or phone camera produced sufficient
+quality. For handwritten corrections with dense notation or faded ink, the
+corrections were manually rewritten on a tablet (iPad with Apple Pencil)
+before scanning---a labor-intensive but necessary investment in data
+quality~\cite{sambasivan2021everyone, wang2023ocrbench,
+mahdavi2019icdar_math}.
 
-The raw material was collected during a dedicated trip to Tunisia, where we
-obtained books and course materials from elite Baccalaureate mathematics
-teachers specializing in the Section Mathématiques program. These materials
-represent the authoritative reference for Tunisian students: each book
-contains exercises paired with detailed, worked corrections that follow the
-official redaction style expected by examiners.
+Each exercise was scanned \textit{together with its correction} as a single
+image or PDF, rather than separating statements from solutions. Course
+material was scanned as continuous documents per chapter.
 
-The scanning process presented two distinct challenges. For printed material
-(textbook pages, typed exercise sheets), a standard flatbed scanner or
-high-resolution phone camera produced images of sufficient quality for
-subsequent OCR. However, many corrections were handwritten by teachers in
-varying levels of legibility. Some handwritten corrections---particularly
-those with dense mathematical notation, small script, or faded
-ink---could not be reliably captured by any OCR system, as even
-state-of-the-art multimodal models struggle with degraded handwritten
-mathematical content~\cite{wang2023ocrbench, mahdavi2019icdar_math}. In these
-cases, the corrections were manually rewritten on a tablet (iPad with Apple
-Pencil) to produce clean, legible handwriting before scanning. While
-time-consuming, this manual intervention was essential to ensure that the
-quality of the knowledge base would not be compromised by illegible source
-material---a direct application of the principle that upstream data quality
-dominates downstream system performance~\cite{sambasivan2021everyone}.
-
-Each exercise was scanned \textit{together with its corresponding correction}
-as a single image or PDF, rather than separating exercise statements from
-their solutions into independent files. For course material, the entire course
-for each chapter was scanned as a continuous document. This scanning strategy
-was deliberate and is discussed further below.
-
-\subsubsection{Corpus Structure and File Organization}
-
-The scanned material was uploaded to a Google Cloud Storage (GCS)
-bucket~\cite{gcloud_storage2024}, organized into a hierarchical folder
-structure that encodes both the mathematical topic and the document type:
+\paragraph{Corpus structure.}
+The material was uploaded to Google Cloud Storage~\cite{gcloud_storage2024}
+in a hierarchical structure:
 
 \begin{verbatim}
 BacMath_Raw_Data/
   01_Continuite_et_limites/
-    Cours/                          → course material
-    series_et_corrections/          → exercises + corrections
-  02_Derivabilite/
-    Cours/
-    series_et_corrections/
+    Cours/                      -> course material
+    series_et_corrections/      -> exercises + corrections
   ...
   20_Coniques/
-    Cours/
-    series_et_corrections/
-  Bac_avec_corrections_Images/      → past exam corrections
+  Bac_avec_corrections_Images/  -> past exam corrections
 \end{verbatim}
 
-The final corpus is organized into three categories of material:
-\begin{enumerate}
-    \item \textbf{Chapter-based course material} (\textit{Cours}): for each
-    of the 20 chapters of the Baccalaureate programme (e.g.,
-    \textit{Nombres complexes}, \textit{Suites réelles},
-    \textit{Intégrales}), a subfolder contains the course notes with
-    theorem statements, definitions, and properties.
-    \item \textbf{Chapter-based exercise series with corrections}
-    (\textit{séries et corrections}): for each chapter, a subfolder contains
-    exercise series paired with their worked corrections.
-    \item \textbf{Corrected old Baccalaureate exams}: a separate folder
-    (\texttt{Bac\_avec\_corrections\_Images/}) contains past official
-    examinations with their full corrections.
-\end{enumerate}
+This naming convention is machine-readable: the indexing pipeline extracts
+document type, chapter, year, session, and exercise number directly from
+folder paths using regular expressions. The corpus comprises 624 source
+files spanning 20 chapters: 312 corrected exam pages, 250 series exercise
+files, and 62 course material files, yielding 1{,}422 chunks after indexing.
 
-This naming convention is not merely organizational---it is
-\textit{machine-readable}. The indexing pipeline (Section~\ref{subsec:database-construction})
-extracts document type, chapter name, year, session, and exercise number
-directly from the folder path and file name using regular expressions.
-For example, the path
-\texttt{BacMath\_Raw\_Data/10\_Nombres\_complexes/series\_et\_corrections/S1\_EX1\_sol\_1.jpg.tex}
-is parsed to extract: chapter = ``Nombres complexes'', type = ``serie'',
-exercise key = ``S1\_EX1'', is\_solution = true. This metadata-from-path
-strategy ensures that every chunk inherits structured metadata without
-requiring manual annotation, a design principle that scales with corpus
-growth.
-
-The structure is designed for incremental growth: adding a new chapter
-requires only creating its \texttt{Cours/} and
-\texttt{series\_et\_corrections/} subfolders under the corresponding chapter
-directory. In total, the corpus comprises 624 source files spanning 20
-chapters: 312 corrected Baccalaureate exam pages, 250 series exercise files,
-and 62 course material files, yielding 1{,}422 chunks after indexing.
-
-\subsubsection{Paired Exercise--Correction Acquisition}
-
-A deliberate and consequential design decision was made
-during acquisition: \textbf{each exercise was scanned together with its
-corresponding correction as a single logical unit}, rather than separating
-exercise statements from their solutions into independent files. We refer to
-this strategy as \textit{paired exercise--correction acquisition}.
-
-This decision was motivated by three observations. First, in mathematical
-pedagogy, the correction is not merely an answer but a complete reasoning
-chain whose structure depends on the exact phrasing and constraints of the
-exercise statement. Separating them would sever the logical dependency between
-question and answer. Second, the retrieval system benefits from operating over
-units that contain both the problem setup and the solution method: when a
-student asks a question, the most useful retrieval target is a complete
-worked example, not an orphaned solution missing its premise. Third, research
-on chunking granularity for RAG systems has shown that preserving the logical
-structure of documents during indexing significantly improves retrieval
-relevance. Zhao~et~al.~\cite{zhao2024financial_chunking} demonstrated that
-structure-aware chunking---segmenting documents according to their inherent
-element types rather than at arbitrary character boundaries---leads to measurably
-better retrieval accuracy compared to paragraph-level chunking, a finding
-echoed in the broader literature on adaptive chunk
-granularity~\cite{chen2024mog}. While these studies address financial and
-general-purpose documents rather than mathematical exercises specifically, the
-underlying principle applies directly: the exercise--correction pair constitutes
-a natural structural unit in mathematical pedagogy, and its preservation during
-acquisition respects the document's inherent logical boundaries.
-
-No prior work has studied paired exercise--correction acquisition for
-mathematical RAG systems in the specific context of the Tunisian Baccalaureate.
-This design decision is therefore presented as a domain-specific contribution
-of this thesis, grounded in the broader principles of structure-aware document
-processing for retrieval systems.
+\paragraph{Paired exercise--correction acquisition.}
+Scanning each exercise together with its correction was a deliberate design
+decision. In mathematical pedagogy, the correction is a complete reasoning
+chain whose structure depends on the exercise statement. Separating them
+would sever this dependency. The retrieval system also benefits: the most
+useful retrieval target is a complete worked example, not an orphaned
+solution. This aligns with research showing that structure-aware document
+processing improves retrieval
+quality~\cite{zhao2024financial_chunking, chen2024mog}.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Mathematical Document Digitization}
+\subsubsection{Mathematical Document Digitization}
 \label{subsec:digitization}
 
-Once the raw material was scanned, the next challenge was to convert images and
-PDF scans of mathematical content into machine-readable text suitable for
-embedding and retrieval. This is a non-trivial problem: mathematical documents
-contain two-dimensional spatial structures (fractions, subscripts, superscripts,
-integrals, matrices) that cannot be captured by standard one-dimensional OCR
-pipelines designed for linear text~\cite{wang2023ocrbench,
-mahdavi2019icdar_math}. A faithful digitization must produce output that
-preserves both the natural-language text and the mathematical expressions, ideally
-in a format such as \LaTeX{} that encodes structural relationships explicitly.
+The next step converts scanned images into machine-readable \LaTeX{}.
+Mathematical documents contain two-dimensional structures (fractions,
+subscripts, integrals) that standard OCR cannot
+handle~\cite{wang2023ocrbench, mahdavi2019icdar_math}.
 
-\subsubsection{Tool Selection: Mathpix versus Gemini}
+\paragraph{Tool selection.}
+We initially considered Mathpix~\cite{mathpix2024}, a commercial math-OCR
+service, but its per-page pricing made it impractical for a thesis prototype.
+Instead, we used Gemini via Vertex AI. Benchmarking by Wang et
+al.~\cite{wang2023ocrbench} found that Gemini achieved the highest overall
+OCR score among multimodal models tested. For our material---primarily
+printed or cleanly rewritten---Gemini provided sufficient fidelity at
+negligible cost. The choice was driven by budget constraints, not a claim of
+superior accuracy over Mathpix.
 
-We initially considered \textbf{Mathpix}, a commercial service specifically
-designed for mathematical OCR that converts images of equations into \LaTeX{}
-with high accuracy~\cite{mathpix2024}. However, Mathpix operates on a
-per-page pricing model, and the cost of processing several hundred scanned
-pages made it impractical for a bachelor thesis prototype with limited
-resources.
+\paragraph{Pipeline (\texttt{digitize.py}).}
+The digitization pipeline: (1)~enumerates all images and PDFs in GCS,
+(2)~checks for existing companion \texttt{.tex} files (making the pipeline
+resume-friendly), (3)~sends each pending file to Gemini with a structured
+prompt requesting faithful \LaTeX{} transcription in the official redaction
+style, and (4)~uploads the result back to GCS. The pipeline includes
+exponential-backoff retry logic for transient API errors.
 
-As an alternative, we adopted \textbf{Google Gemini} (accessed through the
-Vertex AI API), a multimodal large language model capable of interpreting
-images and generating structured text output. Recent benchmarking has shown
-that large multimodal models such as Gemini and GPT-4V achieve competitive
-performance on document understanding tasks, including mathematical expression
-recognition, though they still face challenges with handwritten formulas and
-degraded scan quality~\cite{wang2023ocrbench}. The OCRBench evaluation by
-Wang~et~al. found that Gemini achieved the highest overall score across a
-comprehensive battery of OCR tasks, including handwritten mathematical
-expression recognition, among the multimodal models tested. For our use
-case—primarily printed or cleanly handwritten Baccalaureate material—Gemini
-provided sufficient fidelity at negligible marginal cost, since Vertex AI
-usage was covered under an existing cloud project allocation.
-
-It is important to note that no peer-reviewed study directly compares Gemini
-and Mathpix for mathematical document digitization as of the time of writing.
-The choice of Gemini over Mathpix was therefore an implementation constraint
-driven by cost rather than a claim of superior accuracy. In a production
-system with dedicated funding, a specialized tool like Mathpix might yield
-higher fidelity for edge cases such as heavily degraded scans or dense matrix
-notation.
-
-\subsubsection{Digitization Pipeline (\texttt{digitize.py})}
-
-The digitization pipeline, implemented in the \texttt{digitize.py} module,
-operates as follows:
-
-\begin{enumerate}
-    \item \textbf{Source enumeration.} The script scans a Google Cloud Storage
-    (GCS) bucket under a designated prefix (\texttt{BacMath\_Raw\_Data/}) and
-    identifies all image and PDF files with supported extensions
-    (\texttt{.pdf}, \texttt{.png}, \texttt{.jpg}, \texttt{.jpeg},
-    \texttt{.webp}).
-
-    \item \textbf{Deduplication check.} For each source file, the script
-    checks whether a companion \texttt{.tex} file already exists in the same
-    GCS path (e.g., \texttt{image.png} $\to$ \texttt{image.png.tex}). Files
-    with an existing companion are skipped, making the pipeline
-    \textit{resume-friendly}: it can be interrupted and restarted without
-    re-processing completed files.
-
-    \item \textbf{Multimodal transcription.} Each pending file is sent to the
-    Gemini model along with a structured prompt that instructs the model to
-    act as a Tunisian mathematics teacher and transcribe the document
-    faithfully into clean \LaTeX{}, preserving the official redaction
-    style (``On a\ldots'', ``Donc\ldots'', ``D'après\ldots''), using proper
-    mathematical environments (\texttt{align*}, \texttt{cases},
-    \texttt{enumerate}), and marking illegible passages with
-    \texttt{[ILLISIBLE]}. The prompt explicitly requests that exercises and
-    corrections be separated with \texttt{\textbackslash section*\{Énoncé\}}
-    and \texttt{\textbackslash section*\{Correction\}} headings.
-
-    \item \textbf{Upload and logging.} The resulting \LaTeX{} text is uploaded
-    back to GCS as the companion \texttt{.tex} file. Failures are logged to a
-    JSONL report for later inspection and selective retry.
-\end{enumerate}
-
-The pipeline includes exponential-backoff retry logic (three attempts with
-delays of 3, 6, and 12 seconds) to handle transient API errors, and supports
-batch-size limiting (\texttt{-{}-max\_files}) for controlled processing runs.
-
-\subsubsection{Bug Discovery and Fix}
-
-During development, we discovered a subtle bug in an earlier version of the
-deduplication logic: the script checked only for companion files of the form
-\texttt{image.png.tex} but not \texttt{image.tex} (without the original
-extension). This caused files that had already been digitized under a slightly
-different naming convention to be re-processed, wasting API calls and
-potentially creating duplicate entries. After identifying this issue through
-inspection of the GCS bucket, we corrected the deduplication check to
-consistently use the \texttt{<original\_filename>.tex} convention, ensuring
-idempotent behavior. While minor in isolation, this kind of robustness issue
-matters in a thesis prototype where API budgets are limited and reproducibility
-of the corpus is important.
-
-\subsubsection{Digitization Quality and OCR Groundtruth}
-
-Because every downstream component of the RAG pipeline---chunking, embedding,
-retrieval, and generation---operates on the digitized \LaTeX{} text rather than
-the original images, any errors introduced during digitization propagate
-through the entire system. A misrecognized formula, a dropped minus sign, or a
-garbled theorem statement will be embedded into the vector store, potentially
-retrieved as context, and injected into the language model's prompt, leading to
-incorrect answers. This error propagation chain makes digitization quality a
-critical bottleneck for the overall system~\cite{sambasivan2021everyone}.
-
-To quantify the fidelity of Gemini's transcription, we conducted a groundtruth
-evaluation in which a sample of digitized pages was manually compared against
-the original scanned documents. The methodology and results of this evaluation
-are presented in Section~\ref{subsec:results}, as they constitute an
-experimental finding rather than a design decision. However, the key
-observation is relevant here: Gemini's transcription quality was found to be
-sufficient for the printed and cleanly rewritten material that constitutes the
-majority of our corpus, while degraded handwritten pages (which motivated the
-iPad rewriting strategy described above) showed higher error rates. This
-confirms that the manual rewriting step, though labor-intensive, was a
-necessary investment in data quality.
+\paragraph{Quality.}
+Digitization errors propagate through the entire system: a misrecognized
+formula gets embedded, retrieved, and injected into the LLM's prompt. The
+ground truth evaluation (Section~\ref{subsec:ocr-evaluation}) confirmed an
+average CER of 5.4\% and \LaTeX{} math accuracy of 97.1\%---sufficient for
+our corpus but not error-free.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Database Construction and Indexing}
+\subsubsection{Database Construction and Indexing}
 \label{subsec:database-construction}
 
-With the corpus digitized into \LaTeX{} files stored in GCS, the next stage is
-to transform these files into an indexed, searchable vector database. This is
-handled by the \texttt{build\_db.py} module, which performs normalization,
-chunking, metadata extraction, embedding, and storage.
+\paragraph{Migration to ChromaDB.}
+An early prototype used a JSON-based vector store. This was functional for
+initial experiments but could not scale (full memory load per query, no
+incremental updates, no metadata filtering). We migrated to
+ChromaDB~\cite{chromadb2024}, which provides persistent local storage,
+native metadata filtering, and deterministic upsert operations.
 
-\subsubsection{From JSON Vector Store to ChromaDB}
+\paragraph{Text normalization.}
+Before chunking, each \texttt{.tex} file is normalized: CRLF $\to$ LF,
+collapsed whitespace, and excess newlines reduced to double newlines.
 
-In an early prototype of this system, we stored document embeddings in a simple
-JSON-based vector store: each chunk's embedding vector, text, and metadata were
-serialized into a JSON file, and similarity search was performed by loading all
-vectors into memory and computing distances with NumPy. This approach was
-functional for initial experiments but quickly revealed its limitations:
+\paragraph{Adaptive chunking.}
+Corrections use 1{,}500-character chunks with 200-character overlap to
+preserve exercise boundaries. Course material uses 3{,}000-character chunks
+with 250-character overlap to keep theorems intact. The algorithm prefers
+natural break points (paragraph breaks, line breaks, sentence endings) over
+arbitrary character positions, consistent with findings that structure-aware
+chunking improves retrieval~\cite{zhao2024financial_chunking, chen2024mog}.
 
-\begin{itemize}
-    \item \textbf{Scalability.} Loading the entire vector set into memory for
-    every query is feasible for dozens of chunks but becomes impractical as
-    the corpus grows to hundreds or thousands.
-    \item \textbf{No incremental updates.} Adding new documents required
-    regenerating the entire JSON file, re-embedding all chunks even if only
-    one file changed.
-    \item \textbf{No metadata filtering.} The JSON store had no native support
-    for filtering by document type, chapter, or year during retrieval; all
-    filtering had to be implemented ad hoc in application code.
-    \item \textbf{No persistence guarantees.} The JSON file could be corrupted
-    by concurrent writes or interrupted saves, with no transactional safety.
-\end{itemize}
+\paragraph{Metadata extraction.}
+Each chunk is annotated with metadata extracted from the GCS path:
+\texttt{type} (bac\_officiel, serie, cours), \texttt{chapter},
+\texttt{year}, \texttt{session}, \texttt{exo\_id}, \texttt{is\_solution}
+(boolean), \texttt{group\_id} (for companion pairing), \texttt{filename},
+and \texttt{source} (GCS URI). This metadata enables filtered retrieval and
+exercise--correction pairing without manual annotation.
 
-We migrated to \textbf{ChromaDB}, an open-source vector database designed for
-embedding storage and similarity search in AI applications. ChromaDB provides
-persistent local storage (backed by SQLite for metadata and an HNSW index for
-vectors), native metadata filtering, deterministic upsert operations, and a
-Python API that integrates directly with custom embedding
-functions~\cite{chromadb2024}. For a thesis prototype operating on a
-domain-specific corpus of moderate size (approximately 2{,}000 chunks),
-ChromaDB offers the right balance between operational simplicity and the
-features needed for a robust RAG pipeline. While managed cloud vector databases
-such as Pinecone or Weaviate provide additional scalability features, they
-introduce external dependencies and costs that are unnecessary at the scale of
-this project.
-
-The broader RAG literature consistently emphasizes the importance of
-purpose-built vector storage for retrieval systems. Karpukhin~et~al.
-demonstrated that dense passage retrieval with efficient vector indexing
-(using FAISS in their case) dramatically outperforms sparse retrieval
-methods like BM25 for open-domain question answering~\cite{karpukhin2020dpr}.
-The architectural principle—precomputing dense embeddings and searching them
-via approximate nearest neighbors—is the same whether the index is stored in
-FAISS, ChromaDB, or any other vector database. Our choice of ChromaDB
-reflects the practical constraint of needing a self-contained, locally
-persistent store that supports metadata-filtered retrieval without requiring
-a separate server process.
-
-\subsubsection{Text Normalization}
-
-Before chunking, each downloaded \texttt{.tex} file undergoes normalization:
-line endings are standardized (CRLF $\to$ LF), consecutive whitespace is
-collapsed, and runs of three or more newlines are reduced to double newlines.
-This ensures consistent chunk boundaries regardless of the formatting
-idiosyncrasies introduced during the Gemini transcription step.
-
-\subsubsection{Adaptive Chunking Strategy}
-
-Not all documents in the corpus have the same internal structure. Correction
-documents (Baccalaureate exams and exercise series) tend to be organized
-around discrete exercises, each with clearly numbered parts. Course material,
-by contrast, contains long-form theorem statements, proofs, and explanatory
-text where meaning spans larger passages. A uniform chunk size would either
-fragment corrections mid-exercise or produce excessively small course chunks
-that lose theorem context.
-
-We therefore implement \textit{adaptive chunking}: the chunk size and overlap
-are determined by the document type. Correction-style documents
-(\texttt{bac\_officiel}, \texttt{serie}) use a smaller chunk size of 1{,}500
-characters with 200 characters of overlap, designed to preserve individual
-exercise boundaries. Course material (\texttt{cours}) uses a larger chunk
-size of 3{,}000 characters with 250 characters of overlap, keeping theorem
-statements and their proofs within a single chunk whenever possible. A default
-fallback of 1{,}800 characters with 200 characters of overlap is used for
-documents that do not match either category.
-
-The chunking algorithm itself prefers natural text boundaries over arbitrary
-character positions. When a chunk reaches its target size, the algorithm
-searches the last 40\% of the segment for the best available break point,
-prioritizing in order: paragraph breaks (double newline), line breaks
-(single newline), sentence endings (period followed by space), and finally
-any whitespace. This boundary-aware splitting reduces the likelihood of
-cutting through a mathematical derivation or a mid-sentence logical argument.
-
-This approach aligns with recent findings by Zhao~et~al., who showed that
-structure-aware chunking significantly outperforms naive fixed-size splitting
-for RAG retrieval quality~\cite{zhao2024financial_chunking}. Chen~et~al.
-further proposed Mix-of-Granularity, a framework that dynamically selects
-optimal chunk granularity based on query characteristics, confirming that
-no single chunk size is optimal for heterogeneous document
-collections~\cite{chen2024mog}.
-
-\subsubsection{Metadata Extraction}
-\label{subsubsec:metadata}
-
-Each chunk is annotated with a rich metadata schema extracted from the GCS
-blob path and file naming conventions. The metadata fields are:
-
-\begin{description}
-    \item[\texttt{type}] Document category, inferred from path keywords:
-    \texttt{bac\_officiel} (corrected old Baccalaureate exams),
-    \texttt{serie} (chapter-based exercise series with corrections),
-    \texttt{cours} (chapter-based course material), or \texttt{exercice}
-    (generic fallback for unclassified files).
-
-    \item[\texttt{year}] Examination year, extracted via regex from patterns
-    such as \texttt{Bac2019} or \texttt{bac\_2022}.
-
-    \item[\texttt{session}] Examination session: \texttt{principal} (main
-    session) or \texttt{controle} (resit session), parsed from path tokens.
-
-    \item[\texttt{exo\_id}] Exercise number within the examination, extracted
-    from patterns such as \texttt{Ex3} or \texttt{exercice\_2}.
-
-    \item[\texttt{is\_solution}] Boolean flag (stored as the string
-    \texttt{"true"} or \texttt{"false"} due to ChromaDB metadata constraints)
-    indicating whether the chunk comes from a correction or an exercise
-    statement. Detected by the presence of path indicators such as
-    \texttt{\_sol}, \texttt{corrig}, or \texttt{correction}.
-
-    \item[\texttt{chapter}] Mathematical topic, cleaned from the folder name
-    (e.g., \texttt{10\_Nombres\_complexes} $\to$ \texttt{Nombres complexes}).
-
-    \item[\texttt{group\_id}] The parent folder name, used to link exercise
-    statements and their corrections that originate from the same source
-    document. This field is critical for the companion retrieval mechanism
-    described in Section~\ref{subsec:paired-retrieval}.
-
-    \item[\texttt{filename}] Original file name for traceability.
-
-    \item[\texttt{blob\_name}] Full GCS path.
-
-    \item[\texttt{source}] GCS URI (\texttt{gs://bucket/path}) for citation
-    in generated answers.
-\end{description}
-
-This metadata schema serves two purposes. At retrieval time, it enables
-filtered search: the first retrieval pass queries only correction-type
-documents with \texttt{is\_solution=true}, while the second pass targets
-course material (see Section~\ref{subsec:retrieval-engine}). At the
-companion-pairing stage, the combination of \texttt{chapter}, \texttt{type},
-\texttt{year}, and \texttt{exo\_id} allows the system to locate the exercise
-statement corresponding to a retrieved correction (see
-Section~\ref{subsec:paired-retrieval}).
-
-\subsubsection{Incremental Indexing and Manifest Tracking}
-
-Re-embedding the entire corpus on every update would be prohibitively slow:
-embedding a single chunk with BGE-M3 takes on the order of hundreds of
-milliseconds, and the full corpus contains over a thousand chunks. To avoid
-this, \texttt{build\_db.py} maintains a \textit{manifest} file
-(\texttt{index\_manifest.json}) that tracks the state of every indexed file.
-
-For each \texttt{.tex} blob in GCS, the manifest records:
-\begin{itemize}
-    \item The GCS \textit{generation} number (a version identifier that changes
-    whenever the blob is modified).
-    \item A SHA-256 hash of the normalized text content.
-    \item The list of chunk IDs produced from that file.
-    \item Key metadata fields (type, year, chapter, etc.) for statistics.
-\end{itemize}
-
-When the indexing script runs, it compares each blob's current generation
-against the manifest. If the generation is unchanged, the file is skipped
-entirely. If the generation has changed but the content hash is identical
-(indicating a metadata-only update in GCS), the manifest is updated without
-re-embedding. Only when the actual text content has changed does the system
-delete the old chunks from ChromaDB and insert new ones. This two-level check
-(generation, then content hash) reduces re-indexing time from the order of
-minutes to seconds for unchanged corpora.
-
-Chunk IDs follow a deterministic scheme:
-\texttt{gs://bucket/path.tex::chunk\_0}, \texttt{::chunk\_1}, etc. This
-ensures that upsert operations replace the exact same logical chunk rather
-than creating duplicates, a property that is essential for maintaining index
-consistency across incremental updates.
-
-The manifest is saved atomically using a write-to-temporary-file followed by
-\texttt{os.replace()}, which is atomic on POSIX systems, preventing
-corruption from interrupted writes.
+\paragraph{Incremental indexing.}
+A manifest file (\texttt{index\_manifest.json}) tracks each file's GCS
+generation number and content hash. Only files with changed content are
+re-embedded, reducing re-indexing time from minutes to seconds.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Embedding Model Selection}
+\subsubsection{Embedding Model Selection}
 \label{subsec:embedding-selection}
 
-The quality of a dense retrieval system is fundamentally bounded by the
-discriminative power of its embedding model. If two semantically different
-queries map to similar vectors, the retrieval stage cannot distinguish between
-them, and no amount of prompt engineering or re-ranking can recover the
-lost information. This constraint is especially acute in mathematical
-domains, where notational differences that are visually and linguistically
-minimal—such as $v(n)$ versus $u(n)$, or $\sin(x)$ versus $\cos(x)$—carry
-entirely different semantic content.
+Retrieval quality is bounded by the embedding model's discriminative power.
+If semantically different queries map to similar vectors, no downstream
+processing can recover the lost information---especially acute in math,
+where minimal notational differences ($v(n)$ vs.\ $u(n)$) carry entirely
+different semantics.
 
-\subsubsection{Initial Experience with Google Embedding Models}
+\paragraph{Initial experience.}
+Our first implementation used a Google embedding model via Vertex AI.
+During testing, it did not reliably distinguish between closely related
+mathematical sequences---a $v(n)$ query would retrieve $u(n)$ chunks.
+General-purpose models treat single-character differences as
+insignificant~\cite{mansouri2019tangent, pfahler2020math_embeddings},
+but in math they are decisive. This was a qualitative observation, not a
+controlled experiment.
 
-Our first implementation used a Google-provided embedding model (accessed
-through the Vertex AI Embeddings API). During testing, we observed that this
-model did not reliably distinguish between queries involving closely related
-mathematical sequences. For instance, a question about the convergence of a
-sequence $v(n)$ would retrieve chunks discussing $u(n)$, and vice versa,
-despite these being distinct sequences with different recursive definitions
-and convergence behaviors in a given exercise. This is not surprising in
-hindsight: general-purpose text embedding models are trained on natural
-language corpora where single-character differences rarely change the overall
-meaning of a passage. In mathematics, however, such differences are
-semantically decisive.
+\paragraph{Migration to BGE-M3.}
+We switched to BGE-M3~\cite{chen2024bge_m3}, built on XLM-RoBERTa with
+8{,}192-token context. Its multilingual support (French + Arabic), long
+context window, and multi-granularity training make it well-suited for our
+heterogeneous corpus. The $v(n)$/$u(n)$ confusion no longer occurred after
+migration.
 
-This observation is consistent with the broader literature on the limitations
-of text embeddings for mathematical content. Research on mathematical
-information retrieval has established that mathematical expressions have
-inherently two-dimensional spatial structures and can be written in multiple
-semantically equivalent forms, making them fundamentally different from linear
-natural-language text~\cite{mansouri2019tangent, zanibbi2016math_retrieval}.
-Standard text embedding models, which are optimized for natural-language
-similarity, tend to treat mathematical symbols as low-frequency tokens with
-weak learned representations, leading to poor discrimination between
-structurally similar but semantically distinct
-expressions~\cite{pfahler2020math_embeddings}.
-
-It is important to note that this observation—poor discrimination between
-$v(n)$ and $u(n)$—is an empirical finding from our own testing, not a
-controlled experiment with published metrics. We did not conduct a systematic
-ablation study comparing embedding models on mathematical retrieval benchmarks.
-The decision to switch models was driven by qualitative observation of
-retrieval failures during iterative development.
-
-\subsubsection{Migration to BGE-M3}
-
-We replaced the Google embedding model with \textbf{BGE-M3}
-(\textit{Multi-Linguality, Multi-Functionality, Multi-Granularity}), developed
-by the Beijing Academy of Artificial Intelligence
-(BAAI)~\cite{chen2024bge_m3}. BGE-M3 is built on an XLM-RoBERTa backbone,
-continually pre-trained with RetroMAE, and supports input sequences of up to
-8{,}192 tokens. It achieves state-of-the-art results on multilingual
-(MIRACL), cross-lingual (MKQA), and long-document retrieval benchmarks.
-
-Several characteristics of BGE-M3 make it particularly suitable for our use
-case:
-
-\begin{enumerate}
-    \item \textbf{Multilingual support.} The Tunisian Baccalaureate
-    mathematics corpus is written in French with embedded \LaTeX{} mathematical
-    notation and occasional Tunisian Arabic (Derja) terms. BGE-M3 supports
-    over 100 languages, including French and Arabic, and was trained on
-    multilingual retrieval tasks, making it robust to the code-switching
-    present in our documents.
-
-    \item \textbf{Long context window.} With a maximum input length of 8{,}192
-    tokens, BGE-M3 can embed our larger course-material chunks (up to 3{,}000
-    characters) without truncation, preserving the full semantic content of
-    theorem-length passages.
-
-    \item \textbf{Multi-granularity training.} The model was trained on inputs
-    ranging from short sentences to long documents, which aligns with the
-    heterogeneous nature of our corpus (short exercise statements alongside
-    long course sections).
-
-    \item \textbf{Dense retrieval quality.} BGE-M3 simultaneously supports
-    dense, sparse, and multi-vector retrieval. We use only the dense
-    retrieval mode (extracting the \texttt{dense\_vecs} output), which already
-    provides superior discrimination on our mathematical content compared to
-    the previous model—an observation we confirmed qualitatively by verifying
-    that the $v(n)$/$u(n)$ confusion no longer occurred in retrieval results.
-\end{enumerate}
-
-The embedding function is implemented as a custom ChromaDB
-\texttt{EmbeddingFunction} class that wraps the \texttt{BGEM3FlagModel} from
-the FlagEmbedding library. The model is loaded once as a singleton and reused
-across all embedding calls, with automatic GPU detection (\texttt{fp16=True}
-when CUDA is available, \texttt{fp16=False} on CPU) for hardware-adaptive
-performance.
+The embedding function wraps the \texttt{BGEM3FlagModel} as a custom
+ChromaDB \texttt{EmbeddingFunction}, loaded once as a singleton with
+automatic GPU detection.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{RAG Retrieval and Generation Engine}
+\subsubsection{RAG Retrieval and Generation Engine}
 \label{subsec:retrieval-engine}
 
-The core runtime pipeline is implemented in the \texttt{rag\_engine.py} module,
-which encapsulates the complete retrieve–compile–generate cycle in a single
-class (\texttt{TunisianMathRAG}). This module is deliberately
-\textit{UI-agnostic}: it exposes a \texttt{.query(question, mode)} method
-that returns a structured \texttt{QueryResult} dataclass, and can be called
-from a Streamlit interface, a Jupyter notebook, or a command-line test script
-without modification. This separation of concerns was essential for thesis
-evaluation, where we needed to run the same engine across different testing
-interfaces while ensuring consistent behavior.
+The runtime pipeline is implemented in \texttt{rag\_engine.py}. It is
+UI-agnostic: a single \texttt{.query(question, mode)} method returns a
+structured result, callable from Streamlit, Jupyter, or CLI.
 
-\subsubsection{Two-Stage Retrieval}
-\label{subsubsec:two-stage}
+\paragraph{Two-stage retrieval.}
+The first pass searches correction-type documents
+(\texttt{is\_solution=true}), retrieving $k_1 = 10$ candidates. The
+rationale is pedagogical: a previously corrected exercise provides not just
+mathematical content but a \textit{rhetorical model}---the redaction style
+the LLM can mimic.
 
-The retrieval strategy is the most distinctive architectural feature of the
-RAG engine. Rather than performing a single undifferentiated similarity search
-over the entire corpus, the engine executes a \textit{two-stage retrieval}
-pipeline that prioritizes correction-style documents before falling back to
-course material.
+If the best first-pass distance exceeds 1.2, a second pass retrieves up
+to $k_2 = 8$ course-material documents for theorem backing. If both fail,
+an unfiltered fallback search is used.
 
-\paragraph{First pass: correction exemplars.}
-The first retrieval pass searches exclusively among correction-type documents
-(\texttt{type} $\in$ \{\texttt{bac\_officiel}, \texttt{serie}\}
-with \texttt{is\_solution} = \texttt{true}), retrieving up
-to $k_1 = 10$ candidates. The rationale is pedagogical: when a student asks a
-question, the most directly useful reference is a previously corrected exercise
-that is similar in structure and topic. Such a correction provides not just the
-mathematical content of the answer, but also the \textit{rhetorical model}—the
-step-by-step redaction style, the logical connectors (``On a\ldots'',
-``Or\ldots'', ``Donc\ldots''), and the level of detail expected by
-Baccalaureate examiners. By presenting these correction exemplars in the LLM's
-context window, we enable a form of \textit{style mimicry}: the model is
-instructed to reproduce the method and redaction style of the retrieved
-correction, adapting it to the student's specific question.
-
-\paragraph{Second pass: course-material fallback.}
-If the best distance from the first pass exceeds a threshold (see below),
-indicating that no sufficiently similar correction exists in the corpus, the
-engine executes a second retrieval pass targeting course material
-(\texttt{type} = \texttt{cours}), retrieving up to
-$k_2 = 8$ candidates. These documents provide the theoretical backing—theorem
-statements, properties, and definitions—needed to construct a solution from
-first principles. In this case, the system prompt instructs the LLM to build
-the answer using the retrieved theorems while maintaining the Baccalaureate
-redaction conventions.
-
-If both passes fail to produce relevant results, the engine falls back to an
-unfiltered search over the entire corpus as a last resort, applying a relaxed
-distance threshold.
-
-\paragraph{Pedagogical motivation.}
-This two-stage strategy reflects a deliberate pedagogical design. In the
-Tunisian Baccalaureate context, the distinction between ``solving an
-exercise'' and ``knowing the theory'' is fundamental. A correction exemplar
-teaches the student \textit{how to write} a solution in the expected format;
-a course reference teaches \textit{what mathematical tools to use}. By
-separating these two retrieval passes, the system can compose its context
-from the most appropriate source for each query, rather than mixing
-corrections and theory indiscriminately.
-
-\subsubsection{Similarity Thresholds}
-
-The decision between the two retrieval stages is governed by two distance
-thresholds applied to the L2 distances returned by ChromaDB's HNSW index
-(lower distance = higher similarity):
-
+\paragraph{Similarity thresholds.}
+Two L2 distance thresholds govern routing:
 \begin{description}
-    \item[\texttt{SIMILARITY\_GOOD\_THRESHOLD} = 1.2]
-    If the best distance from the first pass is at or below this value, the
-    system considers the correction match to be strong (Case~A) and uses only
-    the correction-pass results, supplemented by companion exercise statements.
-
-    \item[\texttt{SIMILARITY\_FALLBACK\_THRESHOLD} = 1.6]
-    Documents with distances above this value are discarded entirely, regardless
-    of which retrieval pass produced them. This prevents the injection of
-    semantically irrelevant content into the LLM's context, which could
-    degrade answer quality through noise.
+    \item[Good match ($\leq 1.2$):] Strong correction match (Case~A). Only
+    first-pass results are used.
+    \item[Fallback ($\leq 1.6$):] Documents above this are discarded
+    entirely.
 \end{description}
+These were calibrated empirically and are specific to BGE-M3 on our corpus.
 
-These thresholds were determined empirically through iterative testing during
-development. We observed the distribution of L2 distances returned by BGE-M3
-embeddings on a variety of test queries and noted that distances below
-approximately 1.2 consistently corresponded to retrieved corrections that were
-genuinely relevant to the query, while distances above approximately 1.6
-produced corrections on unrelated topics. The intermediate range (1.2--1.6)
-corresponded to partially relevant results that might share a chapter or
-exercise type but not the specific mathematical content of the query.
+\paragraph{Context compilation.}
+Selected documents are formatted into XML-tagged context blocks with
+metadata, role tags (\texttt{[\'ENONC\'E]} / \texttt{[CORRECTION]}), and
+content truncated to 2{,}000 characters per document. Total context is
+capped at 14{,}000 characters.
 
-We make no claim that these thresholds are theoretically optimal or
-generalizable to other embedding models or corpora. They are
-implementation-specific parameters calibrated to the behavior of BGE-M3 on
-our particular Tunisian Baccalaureate corpus, and would likely require
-recalibration if the embedding model, corpus size, or document domain were
-changed.
+\paragraph{Prompt and generation.}
+The system prompt defines the ``Monsieur Tounsi'' persona with:
+anti-hallucination rules (use \textit{only} retrieved context), a mimicry
+decision tree (Case~A: copy the correction style; Case~B: build from
+theorems), a syllabus guard, the Derja sandwich convention, and
+anti-injection rules. Generation uses Gemini ($T = 0.15$, max 4{,}096
+tokens) with exponential-backoff retry.
 
-\subsubsection{Context Compilation}
-
-The selected documents (from one or both retrieval passes, plus any companion
-exercise statements) are formatted into XML-tagged context blocks for
-inclusion in the LLM prompt. Each block contains the document's GCS URI,
-metadata labels (\texttt{type}, \texttt{chapter}, \texttt{year}), a role tag
-(\texttt{[ÉNONCÉ]} for exercise statements, \texttt{[CORRECTION]} for
-solutions), and the document content truncated to a maximum of 2{,}000
-characters. The total context is capped at 14{,}000 characters to stay within
-the model's effective context window while leaving room for the system prompt
-and the student's question.
-
-\subsubsection{Prompt Construction and Generation}
-
-The system prompt defines the persona of ``Monsieur Tounsi'', a veteran
-Tunisian mathematics teacher, and encodes several constraints:
-
-\begin{itemize}
-    \item \textbf{Anti-hallucination rules:} The model must use \textit{only}
-    information present in the retrieved context. If the context is
-    insufficient, it must say so explicitly and provide only a method outline.
-    \item \textbf{Mimicry decision tree:} In Case~A (correction found), the
-    model is instructed to copy the method and redaction style of the retrieved
-    correction. In Case~B (course material only), it must construct the
-    solution from retrieved theorems.
-    \item \textbf{Syllabus guard:} Methods that are outside the Tunisian
-    Baccalaureate curriculum (L'Hôpital's rule, Taylor series, matrix
-    diagonalization, etc.) are explicitly forbidden.
-    \item \textbf{Derja sandwich:} The answer begins and ends with
-    motivational phrases in Tunisian Arabic dialect, with the mathematical
-    body in formal academic French—a pedagogical convention familiar to
-    Tunisian students.
-    \item \textbf{Anti-injection rules:} The model is warned that the context
-    may contain adversarial text and must never follow instructions embedded
-    within retrieved documents.
-\end{itemize}
-
-The user prompt includes the interaction mode (\textit{correction} for a dry,
-exam-style answer or \textit{coaching} for a pedagogical explanation), the
-context blocks, the student's question, and final instructions requiring
-explicit source citation.
-
-Generation is performed via the Vertex AI Gemini API with a temperature of
-0.15 (low but non-zero, allowing slight variation while favoring deterministic
-mathematical reasoning) and a maximum output of 4{,}096 tokens. The generation
-call includes exponential-backoff retry logic (up to 3 attempts with delays of
-2, 4, and 8 seconds) to handle transient API failures.
-
-\subsubsection{Confidence Levels and Observability}
-
-Every query returns a \texttt{QueryResult} dataclass that captures not only
-the generated answer but also full observability data: the list of documents
-from each retrieval pass, their distances and metadata, the retrieval case
-(A or B), timing breakdowns (retrieval time, generation time, total time),
-and a confidence level.
-
-The confidence level is computed from retrieval quality:
-\begin{itemize}
-    \item \textbf{Fort} (high): the best distance is $\leq 1.2$ and the
-    total context exceeds 5{,}000 characters, indicating a strong match with
-    substantial supporting material.
-    \item \textbf{Moyen} (medium): the best distance is $\leq 1.6$ but
-    either the match is not as close or the context is sparse.
-    \item \textbf{Faible} (low): no documents were retrieved, or all
-    distances exceed the fallback threshold.
-\end{itemize}
-
-This observability design was essential for thesis evaluation: it allowed us
-to inspect every retrieval decision, verify that the correct documents were
-being selected, and diagnose failure modes systematically.
+\paragraph{Confidence and observability.}
+Each query returns timing breakdowns, retrieval metadata, and a confidence
+level: \textit{fort} (best distance $\leq 1.2$ and context $>$ 5{,}000
+chars), \textit{moyen} (distance $\leq 1.6$), or \textit{faible} (no
+useful results).
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Paired Retrieval of Exercise and Correction}
+\subsubsection{Paired Retrieval of Exercise and Correction}
 \label{subsec:paired-retrieval}
 
-During testing of the RAG engine, we identified a structural problem in the
-retrieved context: the system would sometimes retrieve a correction chunk
-without the corresponding exercise statement, or retrieve an exercise
-statement without its correction. This occurs because the chunking process
-may split an exercise–correction pair across chunk boundaries, and the
-similarity search retrieves individual chunks independently of their
-structural relationships.
+During testing, we found that the system sometimes retrieved a correction
+without its exercise statement, or vice versa. A correction is not
+self-contained---the notation and constraints in the exercise define what
+the correction solves.
 
-This is problematic for mathematical reasoning. A correction is not
-self-contained; it is a response to a specific exercise statement. The
-notation, variable names, and given conditions in the exercise define the
-scope of the correction. Without seeing the exercise statement, neither the
-LLM nor a human reader can fully understand what the correction is solving.
-Conversely, an exercise statement without its correction provides the problem
-but not the solution method that the student needs.
+\paragraph{Companion fetch mechanism.}
+After two-stage retrieval selects its correction documents, the engine
+performs a metadata lookup for each: using \texttt{chapter}, \texttt{type},
+\texttt{year}, and \texttt{exo\_id}, it queries ChromaDB for chunks with
+\texttt{is\_solution=false} (exercise statements). This uses ChromaDB's
+direct metadata lookup, not vector search. Up to 3 companion chunks per
+correction group are prepended to the context with an
+\texttt{[\'ENONC\'E]} label.
 
-\subsubsection{Companion Fetch Mechanism}
-
-To address this, we implemented a \textit{companion fetch} mechanism in the
-retrieval pipeline. After the two-stage retrieval selects its final set of
-correction documents, the engine performs a metadata-based lookup to find the
-corresponding exercise statement for each selected correction:
-
-\begin{enumerate}
-    \item For each correction chunk in the selected results, the engine
-    extracts the key metadata fields: \texttt{chapter}, \texttt{type},
-    \texttt{year}, and \texttt{exo\_id}.
-
-    \item Using these fields, it constructs a metadata filter requesting
-    chunks with the same values but \texttt{is\_solution} = \texttt{false}
-    (i.e., exercise statements rather than corrections).
-
-    \item This filter is executed via ChromaDB's \texttt{collection.get()}
-    method, which performs a direct SQLite metadata lookup rather than a
-    vector similarity search. This is both fast (single-digit milliseconds)
-    and immune to the HNSW index synchronization issues that can affect
-    filtered similarity queries.
-
-    \item The retrieved exercise chunks (up to 3 per correction group) are
-    prepended to the context, appearing before their corresponding
-    corrections.
-\end{enumerate}
-
-In the context compilation step, companion exercise chunks are labeled with
-\texttt{[ÉNONCÉ]} and assigned a special distance marker
-(\texttt{companion (énoncé)}) to distinguish them from chunks retrieved via
-similarity search. This allows the LLM to understand that these exercise
-statements were included for context completeness rather than because they
-matched the query directly.
-
-\subsubsection{Significance for Mathematical RAG}
-
-This companion fetch mechanism is, to our knowledge, not described in the
-existing RAG literature, which typically assumes that each retrieved chunk is
-independently useful. In general-purpose question-answering RAG
-systems~\cite{lewis2020rag, karpukhin2020dpr}, this assumption is reasonable:
-a retrieved Wikipedia paragraph can usually be understood in isolation.
-However, in structured pedagogical documents where exercises and corrections
-form logical pairs, this assumption breaks down.
-
-The closest related concept in the literature is the notion of
-\textit{parent-document retrieval}, where a retrieval system indexes smaller
-chunks for precision but returns the larger parent document for
-context~\cite{gao2024rag_survey}. Our companion fetch mechanism can be seen
-as a specialized form of this pattern, adapted to the paired structure of
-mathematical exercises: rather than returning a generic parent document, we
-return the specific structural counterpart (exercise $\leftrightarrow$
-correction) identified through metadata matching.
-
-This design decision is presented as an implementation-specific contribution
-to domain-adapted RAG for mathematics education. No prior work has, to our
-knowledge, implemented exercise–correction companion retrieval in a
-mathematical tutoring system.
+This is a specialized form of parent-document
+retrieval~\cite{gao2024rag_survey}, adapted to the paired structure of
+mathematical exercises. To our knowledge, no prior work has implemented
+exercise--correction companion retrieval in a mathematical tutoring system.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\subsection{Connection to the Tunisian Baccalaureate Context}
+\subsubsection{Connection to the Tunisian Bac Context}
 \label{subsec:bac-context}
 
-The design decisions described in this section are not arbitrary architectural
-choices; they are motivated by the specific requirements of generating
-Tunisian Baccalaureate-style mathematical solutions. Four characteristics of
-this domain shaped the system:
+Four domain characteristics shaped the system design:
 
 \begin{enumerate}
-    \item \textbf{Curriculum boundaries.} The Tunisian Baccalaureate
-    (Section Mathématiques) covers a fixed set of ten chapters, and examiners
-    penalize solutions that use methods outside the official program. The
-    system must therefore respect these boundaries, which is enforced through
-    both the syllabus guard in the prompt and the metadata filtering that
-    restricts retrieval to curriculum-aligned material.
+    \item \textbf{Curriculum boundaries.} The Bac covers a fixed set of ten
+    chapters; examiners penalize out-of-program methods. Enforced through
+    the syllabus guard and metadata-filtered retrieval.
 
-    \item \textbf{Formal redaction conventions.} Baccalaureate corrections
-    follow a strict rhetorical style: numbered steps, logical connectors in
-    formal French (``On a\ldots'', ``D'après le théorème de\ldots'',
-    ``Donc\ldots''), and concluding statements. The two-stage retrieval
-    strategy prioritizes correction exemplars precisely so that the LLM can
-    mimic this redaction style, producing answers that look and read like
-    official corrections rather than generic mathematical explanations.
+    \item \textbf{Redaction conventions.} Bac corrections follow a strict
+    rhetorical style. The two-stage retrieval prioritizes correction
+    exemplars so the LLM can mimic this style.
 
-    \item \textbf{Exercise–correction dependency.} In Tunisian mathematical
-    pedagogy, corrections are always read alongside their exercises.
-    The companion fetch mechanism preserves this paired structure in the
-    retrieved context, ensuring that the LLM has access to the full logical
-    unit it needs to produce a coherent answer.
+    \item \textbf{Exercise--correction dependency.} Corrections are always
+    read alongside their exercises. The companion fetch preserves this.
 
-    \item \textbf{Bilingual and dialectal context.} The corpus is primarily
-    in French with \LaTeX{} mathematical notation, but student questions may
-    include Tunisian Arabic (Derja) terms, and the pedagogical convention
-    expects motivational phrases in Derja. The choice of BGE-M3, with its
-    multilingual training on over 100 languages including French and Arabic,
-    supports this bilingual operating context.
+    \item \textbf{Bilingual context.} The corpus is in French with \LaTeX{}
+    math; student queries may include Tunisian Derja. BGE-M3's multilingual
+    training supports this.
 \end{enumerate}
-
-Together, these design choices produce a RAG system that is not a generic
-question-answering pipeline adapted to mathematics, but a purpose-built tool
-for a specific educational domain with specific stylistic, curricular, and
-linguistic requirements.
-
-
-% =============================================================================
-%  BIBLIOGRAPHY ENTRIES (to be added to the main .bib file)
-% =============================================================================
-%
-% The following BibTeX entries should be added to the thesis bibliography.
-% They are listed here for convenience and referenced throughout this section.
-%
-% @article{lewis2020rag,
-%   author    = {Patrick Lewis and Ethan Perez and Aleksandra Piktus and Fabio Petroni and Vladimir Karpukhin and Naman Goyal and Heinrich K{\"u}ttler and Mike Lewis and Wen-tau Yih and Tim Rockt{\"a}schel and Sebastian Riedel and Douwe Kiela},
-%   title     = {Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
-%   journal   = {Advances in Neural Information Processing Systems (NeurIPS)},
-%   volume    = {33},
-%   pages     = {9459--9474},
-%   year      = {2020},
-%   url       = {https://arxiv.org/abs/2005.11401},
-% }
-%
-% @article{gao2024rag_survey,
-%   author    = {Yunfan Gao and Yun Xiong and Xinyu Gao and Kangxiang Jia and Jinliu Pan and Yuxi Bi and Yi Dai and Jiawei Sun and Meng Wang and Haofen Wang},
-%   title     = {Retrieval-Augmented Generation for Large Language Models: A Survey},
-%   journal   = {arXiv preprint arXiv:2312.10997},
-%   year      = {2024},
-%   url       = {https://arxiv.org/abs/2312.10997},
-% }
-%
-% @inproceedings{karpukhin2020dpr,
-%   author    = {Vladimir Karpukhin and Barlas Oguz and Sewon Min and Patrick Lewis and Ledell Wu and Sergey Edunov and Danqi Chen and Wen-tau Yih},
-%   title     = {Dense Passage Retrieval for Open-Domain Question Answering},
-%   booktitle = {Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
-%   pages     = {6769--6781},
-%   year      = {2020},
-%   url       = {https://arxiv.org/abs/2004.04906},
-% }
-%
-% @article{chen2024bgem3,
-%   author    = {Jianlv Chen and Shitao Xiao and Peitian Zhang and Kun Luo and Defu Lian and Zheng Liu},
-%   title     = {{BGE} {M3}-Embedding: Multi-Lingual, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation},
-%   journal   = {arXiv preprint arXiv:2402.03216},
-%   year      = {2024},
-%   url       = {https://arxiv.org/abs/2402.03216},
-% }
-%
-% @article{wang2023ocrbench,
-%   author    = {Yongxin Wang and others},
-%   title     = {On the Hidden Mystery of {OCR} in Large Multimodal Models},
-%   journal   = {arXiv preprint arXiv:2305.07895},
-%   year      = {2023},
-%   url       = {https://arxiv.org/abs/2305.07895},
-%   note      = {Introduces OCRBench, a comprehensive benchmark for evaluating OCR capabilities of multimodal LLMs including mathematical expression recognition.},
-% }
-%
-% @article{zhao2024financial_chunking,
-%   author    = {Yuhao Zhao and others},
-%   title     = {Financial Report Chunking for Effective Retrieval-Augmented Generation},
-%   journal   = {arXiv preprint arXiv:2402.05131},
-%   year      = {2024},
-%   url       = {https://arxiv.org/abs/2402.05131},
-% }
-%
-% @article{chen2024mog,
-%   author    = {others},
-%   title     = {Mix-of-Granularity: Optimize the Chunking Granularity for Retrieval-Augmented Generation},
-%   journal   = {Proceedings of COLING 2025},
-%   year      = {2024},
-%   url       = {https://arxiv.org/abs/2406.00456},
-% }
-%
-% @misc{chromadb2024,
-%   author    = {{Chroma}},
-%   title     = {{ChromaDB}: The open-source embedding database},
-%   year      = {2024},
-%   url       = {https://www.trychroma.com/},
-%   note      = {Open-source vector database for AI applications with persistent local storage, metadata filtering, and Python API.},
-% }
-%
-% @misc{mathpix2024,
-%   author    = {{Mathpix}},
-%   title     = {Mathpix: {AI}-powered document conversion},
-%   year      = {2024},
-%   url       = {https://mathpix.com/},
-% }
-%
-% @inproceedings{mansouri2019tangent,
-%   author    = {Behrooz Mansouri and Shaurya Rohatgi and Douglas W. Oard and Jian Wu and C. Lee Giles and Richard Zanibbi},
-%   title     = {Tangent-{CFT}: An Embedding Model for Mathematical Formulas},
-%   booktitle = {Proceedings of the 2019 ACM SIGIR International Conference on Theory of Information Retrieval (ICTIR)},
-%   year      = {2019},
-%   url       = {https://www.cs.rit.edu/~rlaz/files/Mansouri_ICTIR2019.pdf},
-% }
-%
-% @book{zanibbi2016math_retrieval,
-%   author    = {Richard Zanibbi and Dorothea Blostein},
-%   title     = {Recognition and Retrieval of Mathematical Expressions},
-%   year      = {2012},
-%   journal   = {International Journal on Document Analysis and Recognition},
-%   volume    = {15},
-%   number    = {4},
-%   pages     = {331--357},
-%   url       = {https://www.cs.rit.edu/~rlaz/files/mathSurvey.pdf},
-% }
-%
-% @article{pfahler2020math_embeddings,
-%   author    = {Lukas Pfahler and others},
-%   title     = {Math-word Embedding in Math Search and Semantic Extraction},
-%   journal   = {Scientometrics},
-%   year      = {2020},
-%   volume    = {125},
-%   pages     = {3017--3046},
-%   url       = {https://link.springer.com/article/10.1007/s11192-020-03502-9},
-% }
-%
-% @inproceedings{mahdavi2019icdar_math,
-%   author    = {Mahshad Mahdavi and others},
-%   title     = {Advancing {OCR} Accuracy in Image-to-{LaTeX} Conversion},
-%   journal   = {Applied Sciences},
-%   volume    = {13},
-%   number    = {22},
-%   year      = {2023},
-%   url       = {https://www.mdpi.com/2076-3417/13/22/12503},
-% }

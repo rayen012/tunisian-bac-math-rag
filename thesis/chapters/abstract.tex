@@ -4,30 +4,40 @@
 \section*{Abstract}
 \addcontentsline{toc}{section}{Abstract}
 
-% TODO: Write last — after all other chapters are complete.
-% Should be 0.5–1 page summarizing:
-%   - Problem: No AI tutoring system exists for Tunisian Bac Math
-%   - Approach: RAG system with two-stage retrieval, compared against
-%     prompt-only and hybrid baselines
-%   - Key results: (fill in after experiments)
-%   - Conclusion: (1-2 sentences)
-
 This thesis presents the design, implementation, and evaluation of a
 Retrieval-Augmented Generation (RAG) system for the Tunisian Baccalaureate
 mathematics examination (Section Math\'{e}matiques). The system combines a
-curated corpus of digitized course material, exercise series, and corrected
-past examinations with a two-stage retrieval mechanism and a large language
-model to produce curriculum-faithful answers that mimic the official Tunisian
+curated corpus of digitized past examinations, exercise series, and course
+material with a two-stage retrieval mechanism and a large language model to
+produce curriculum-faithful answers that follow the official Tunisian
 correction style.
 
-We compare three approaches: (1)~a pure RAG system that grounds every answer
-in retrieved documents, (2)~a prompt-only baseline that encodes the entire
-syllabus into the system prompt without retrieval, and (3)~a hybrid engine
-that routes queries to RAG or prompt-only mode based on retrieval confidence.
-% TODO: Add 2-3 sentences about key experimental findings once results are ready.
+We built and compared three approaches: (1)~a RAG system that grounds every
+answer in retrieved documents, (2)~a prompt-only baseline that encodes the
+entire Bac syllabus into the system prompt without any retrieval, and (3)~a
+hybrid engine that dynamically routes queries between RAG and prompt-only
+mode based on retrieval confidence. All three systems share the same
+generative model (Gemini 2.5 Flash), the same persona (``Monsieur Tounsi''),
+and the same output format, so the only variable is the source of domain
+knowledge.
 
-The system is deployed as an interactive web application and addresses a
-practical gap in educational technology for the Tunisian secondary school
-context, where no domain-specific AI tutoring tool previously existed.
+A blind evaluation by a Tunisian Bac mathematics teacher, scoring anonymized
+outputs across 15 questions on four criteria (mathematical correctness,
+reasoning clarity, pedagogical quality, Bac style adherence), produced a
+surprising result: the Prompt-Only baseline (mean 4.32/5) outperformed both
+the RAG system (3.22/5) and the Hybrid engine (3.25/5) on every criterion.
+All three systems correctly refused all four out-of-scope guardrail tests.
+A ground truth evaluation of the digitization pipeline confirmed an average
+Character Error Rate of 5.4\% and a \LaTeX{} math expression accuracy of
+97.1\%.
 
-% TODO: Refine after experiments are complete.
+The main explanation is that a state-of-the-art LLM already possesses
+sufficient parametric knowledge of standard Bac-level mathematics, and that
+the current corpus (1{,}422 chunks from 624 files) is too small for
+retrieval to consistently outperform what the model already knows. With a
+substantially larger corpus, this balance could shift in favor of retrieval.
+The thesis contributes the first digitized corpus of Tunisian Bac
+mathematics materials, a domain-specific RAG architecture with paired
+exercise--correction retrieval, and an empirical comparison showing that
+prompt engineering can outperform retrieval when the generative model is
+strong and the corpus is limited.

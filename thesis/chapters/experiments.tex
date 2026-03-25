@@ -1,6 +1,13 @@
-\chapter{Results}
-This chapter presents the experimental setup, the evaluation methodology, and the empirical results of the study. The experiments were designed to assess not only mathematical correctness, but also the ability of the compared systems to produce step-by-step, pedagogically useful, and Tunisian Baccalaureate-style solutions. In addition to the main blind human evaluation, the chapter reports supporting analyses of digitization quality, retrieval behavior, and embedding-model differences.
+% =============================================================================
+%  CHAPTER 4 — EXPERIMENTS
+% =============================================================================
+\section{Experiments}
+\label{sec:experiments}
 
+This section describes the experimental setup, evaluation methodology, and
+results.
+
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Experimental Setup}
 \label{subsec:experimental-setup}
 
@@ -14,120 +21,125 @@ This chapter presents the experimental setup, the evaluation methodology, and th
 \toprule
 \textbf{Metric} & \textbf{Value} \\
 \midrule
-Total indexed files                  & 624 \\
-Total chunks in ChromaDB             & 1422 \\
-Chapters/categories covered          & 19 \\
-Official Bac correction chunks       & 312 \\
-Series/correction chunks             & 250 \\
-Course material chunks               & 62 \\
+Total .tex files in GCS            & 624 \\
+Total chunks in ChromaDB           & 903 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsubsection{Hardware and Software Environment}
-
-All experiments were conducted in a Google Cloud Vertex AI Workbench environment using Python 3.10. Dense retrieval was based on the BGE-M3 embedding model (\texttt{BAAI/bge-m3}), and generation was performed with Gemini through Vertex AI. ChromaDB was used as the local persistent vector database for retrieval.
+\subsubsection{Environment}
 
 \begin{itemize}
     \item \textbf{Platform}: Google Cloud Vertex AI Workbench
     \item \textbf{Python}: 3.10
-    \item \textbf{Embedding model}: BGE-M3 (\texttt{BAAI/bge-m3})
-    \item \textbf{Generation model}: Gemini via Vertex AI
+    \item \textbf{Embedding model}: BGE-M3 (\texttt{BAAI/bge-m3}), CPU,
+    FP32, 1024-dim, max 8192 tokens
+    \item \textbf{Generation model}: Gemini 2.5 Flash via Vertex AI
     \item \textbf{Vector database}: ChromaDB (local persistent storage)
-    \item \textbf{Embedding dimension}: 1024
-    \item \textbf{Maximum embedding length}: 8192 tokens
 \end{itemize}
 
 \subsubsection{Hyperparameters}
 
-Table~\ref{tab:hyperparameters} summarizes the main hyperparameters used in the indexing, retrieval, and generation pipeline.
-
 \begin{table}[H]
 \centering
-\caption{Main system hyperparameters.}
+\caption{System hyperparameters.}
 \label{tab:hyperparameters}
 \begin{tabular}{llr}
 \toprule
 \textbf{Component} & \textbf{Parameter} & \textbf{Value} \\
 \midrule
-Chunking (corr.)   & Chunk size & 1500 chars \\
-                   & Overlap & 200 chars \\
-Chunking (course)  & Chunk size & 3000 chars \\
-                   & Overlap & 250 chars \\
+\multirow{2}{*}{Chunking (corrections)} & Chunk size & 1500 chars \\
+                                          & Overlap & 200 chars \\
+\multirow{2}{*}{Chunking (course)}       & Chunk size & 3000 chars \\
+                                          & Overlap & 250 chars \\
 \midrule
-Retrieval          & $k$ first pass & 10 \\
-                   & $k$ second pass & 8 \\
-                   & Top-$n$ to LLM & 6 \\
-                   & Companion chunks & 3 \\
+\multirow{4}{*}{Retrieval}               & $k$ first pass & 10 \\
+                                          & $k$ second pass & 8 \\
+                                          & Top-$n$ to LLM & 6 \\
+                                          & Companion chunks & 3 \\
 \midrule
-Thresholds (L2)    & Good match & $\leq 1.2$ \\
-                   & Fallback match & $\leq 1.6$ \\
+\multirow{2}{*}{Thresholds (L2)}         & Good match & $\leq 1.2$ \\
+                                          & Fallback match & $\leq 1.6$ \\
 \midrule
-Generation         & Max context chars & 14000 \\
-                   & Max chars per doc & 2000 \\
+\multirow{2}{*}{Generation}              & Max context chars & 14000 \\
+                                          & Max chars per doc & 2000 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Evaluation Methodology}
 \label{subsec:evaluation-methodology}
+\label{subsec:eval-setup}
 
-Evaluating an AI tutoring system for mathematics is inherently difficult. Unlike open-ended natural language generation tasks, where automated metrics such as BLEU or ROUGE may serve as rough proxies, mathematical answer quality depends on logical validity, computational accuracy, and adherence to domain-specific conventions that such metrics do not capture reliably~\cite{kasneci2023chatgpt_education}. For this reason, the evaluation was based on a blind human assessment carried out by a practicing Tunisian Baccalaureate mathematics teacher.
+Mathematical correctness, logical validity, and adherence to domain-specific
+conventions cannot be captured by automated metrics like BLEU or
+ROUGE~\cite{kasneci2023chatgpt_education}. We therefore designed a blind
+human evaluation centered on expert judgment.
 
 \subsubsection{Question Bank}
 
-The evaluation used 20 questions distributed across five categories, each targeting a different aspect of system behavior:
+We used 20 questions across five categories (full list in
+Appendix~\ref{app:questions}):
 
 \begin{itemize}
-    \item \textbf{Category~A} (5 questions): Direct Bac-style exercises closely resembling real examination problems. These questions are likely to have near-exact matches in the corpus and therefore test whether the RAG system can retrieve and use relevant corrections effectively.
+    \item \textbf{Category~A} (5): Direct Bac-style exercises, likely to
+    have near-exact corpus matches. Tests retrieval precision.
 
-    \item \textbf{Category~B} (5 questions): Novel chapter-based exercises covering the same Bac topics but with different numbers, formulations, or problem structures. These questions test whether the systems can generalize beyond memorized examples.
+    \item \textbf{Category~B} (5): Novel exercises on Bac topics with
+    different formulations. Tests generalization.
 
-    \item \textbf{Category~C} (3 questions): Informal student-style questions written in the way a real Tunisian student might type them, with incomplete phrasing, colloquial French, and conceptual rather than computational focus. These questions test pedagogical quality and coaching ability.
+    \item \textbf{Category~C} (3): Informal student-style questions
+    (incomplete phrasing, colloquial French). Tests coaching quality.
 
-    \item \textbf{Category~D} (2 questions): Questions written in Tunisian Arabic (Derja) or in mixed French-Derja, testing language robustness and the system's ability to handle code-switching.
+    \item \textbf{Category~D} (2): Tunisian Derja or mixed-language
+    questions. Tests language robustness.
 
-    \item \textbf{Category~E} (4 questions): Out-of-scope questions requesting methods explicitly outside the Tunisian Bac program, such as L'Hôpital's rule, matrix diagonalization, Taylor series, and Lebesgue integration. These questions test the curriculum guardrail mechanism. Unlike categories A--D, they were evaluated on a binary pass/fail basis rather than with the graded rubric.
+    \item \textbf{Category~E} (4): Out-of-scope methods (L'H\^opital,
+    diagonalization, Taylor, Lebesgue). Tests guardrails. Binary pass/fail.
 \end{itemize}
 
-Categories A through D (15 questions) were evaluated using a four-criterion grading rubric. Category~E (4 questions) was evaluated separately as a guardrail test.
+Categories A--D (15 questions) were graded on a four-criterion rubric.
+Category~E was evaluated separately as a guardrail test.
 
 \subsubsection{Grading Rubric}
 
-Each of the 15 graded questions was scored independently for each system on four criteria, each on a 0--5 scale:
+Each graded question was scored per system on four criteria (0--5 scale,
+equally weighted):
 
 \begin{enumerate}
-    \item \textbf{Mathematical correctness} (0--5): Are the computations and reasoning steps mathematically valid? A score of 0 indicates entirely incorrect or absurd content, whereas 5 indicates a fully correct solution.
-
-    \item \textbf{Reasoning clarity} (0--5): Is the reasoning clear, logical, and well structured? Are the steps easy to follow?
-
-    \item \textbf{Pedagogical quality} (0--5): Does the answer help the student understand the method rather than merely obtain the result? Does it provide educational value beyond a bare computation?
-
-    \item \textbf{Bac style adherence} (0--5): Does the answer resemble an official Tunisian Baccalaureate correction? Does it use the formal conventions (``On a\ldots'', ``Donc\ldots'', ``D'apr\`es\ldots''), academic French, and the expected level of detail?
+    \item \textbf{Mathematical correctness}: validity of computations and
+    reasoning.
+    \item \textbf{Reasoning clarity}: logical structure and readability.
+    \item \textbf{Pedagogical quality}: educational value beyond bare
+    computation.
+    \item \textbf{Bac style adherence}: resemblance to official Tunisian
+    corrections.
 \end{enumerate}
 
-The four criteria were treated as equally important. No composite score was imposed during grading; instead, the teacher evaluated each criterion independently.
+\subsubsection{Blind Protocol}
+\label{subsec:blind-evaluation}
 
-\subsubsection{Blind Evaluation Protocol}
+For each question, the three system outputs were randomly shuffled
+(per-question seed) and presented under anonymous labels (Syst\`{e}me~X,
+Y, Z). The evaluator---an experienced Tunisian Bac mathematics teacher---did
+not know which label corresponded to which system. Answer sheets were
+generated programmatically; the answer key was used to unmask identities
+after grading (details in Appendix~\ref{app:rubric}).
 
-To reduce evaluator bias, we implemented a fully blind grading procedure. For each question, the three system outputs (RAG, Prompt-Only, Hybrid) were randomly shuffled and presented under anonymous labels (Syst\`eme~X, Syst\`eme~Y, Syst\`eme~Z). The shuffling was performed separately for each question using a fixed random seed, so the mapping between anonymous labels and actual system names changed from one question to the next. At no point during grading did the evaluator know which label corresponded to which system.
 
-The anonymous answer sheets and blank grading templates were generated programmatically from the evaluation results and provided to the evaluator as printable documents. Once grading was complete, the answer key was used to recover the system identities and compute per-system statistics.
-
-\subsubsection{Evaluator}
-
-The evaluation was conducted by a single experienced Tunisian Baccalaureate mathematics teacher. The evaluator was selected for domain expertise, including familiarity with Bac correction conventions, official curriculum boundaries, and the pedagogical expectations of the Section Math\'ematiques program. The limitation of relying on a single evaluator is acknowledged in Section~\ref{subsec:limitations}.
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Results}
 \label{subsec:results}
 
-This section reports the outcomes of the blind evaluation. Their interpretation is reserved for the Discussion (Section~\ref{sec:discussion}).
+Interpretation is deferred to Section~\ref{sec:discussion}.
 
 \subsubsection{Overall System Comparison}
 
-Table~\ref{tab:human-evaluation} presents the average scores across all 15 graded questions (categories A--D) for each criterion and system.
-
 \begin{table}[H]
 \centering
-\caption{Blind human evaluation: average scores per criterion (0--5 scale), as assessed by a Tunisian Baccalaureate mathematics teacher across 15 questions (categories A--D). Higher is better.}
+\caption{Blind human evaluation: average scores (0--5) across 15 questions.}
 \label{tab:human-evaluation}
 \begin{tabular}{lrrr}
 \toprule
@@ -138,22 +150,21 @@ Reasoning Clarity        & 3.47 & 4.67 & 3.53 \\
 Pedagogical Quality      & 2.93 & 4.13 & 3.00 \\
 Bac Style Adherence      & 2.93 & 3.73 & 3.07 \\
 \midrule
-\textbf{Mean (unweighted)} & \textbf{3.22} & \textbf{4.32} & \textbf{3.25} \\
+\textbf{Mean} & \textbf{3.22} & \textbf{4.32} & \textbf{3.25} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The Prompt-Only baseline obtained the highest score on all four criteria. Its overall mean (4.32/5) was more than one full point higher than those of both the RAG system (3.22/5) and the Hybrid engine (3.25/5). By contrast, the RAG and Hybrid systems remained very close to one another, with only a 0.03-point difference in their overall means.
-
-Across the four criteria, Bac Style Adherence was the weakest dimension for all three systems, with both the RAG and Hybrid systems remaining below 3.1. Pedagogical Quality showed a similar pattern: only the Prompt-Only system exceeded 4.0 on this criterion. Mathematical Correctness and Reasoning Clarity were the strongest dimensions overall, and the Prompt-Only baseline obtained the highest values on both (4.73 and 4.67, respectively).
+The Prompt-Only baseline scored highest on all four criteria, exceeding both
+retrieval-based systems by more than one full point. The RAG and Hybrid
+systems scored within 0.03 of each other. Bac Style Adherence was the
+weakest criterion across all systems.
 
 \subsubsection{Per-Category Breakdown}
 
-Table~\ref{tab:per-category} reports the unweighted mean across all four criteria, broken down by question category.
-
 \begin{table}[H]
 \centering
-\caption{Per-category mean scores (unweighted average of all four criteria, 0--5 scale). Categories: A = direct Bac-style, B = novel chapter-based, C = informal student questions, D = Derja/mixed language.}
+\caption{Per-category mean scores (average of four criteria, 0--5).}
 \label{tab:per-category}
 \begin{tabular}{llrrr}
 \toprule
@@ -167,19 +178,16 @@ D & Derja / mixed           & 3.50 & 4.38 & 4.12 \\
 \end{tabular}
 \end{table}
 
-The Prompt-Only system achieved the highest score in every category. Its strongest result was observed in Category~C (informal student questions, 4.75/5), which suggests that its coaching-oriented prompting was particularly effective for conceptual and less formal queries.
-
-Category~D (Derja/mixed language) showed the smallest gap between systems: the Hybrid engine reached 4.12, only 0.26 points below the Prompt-Only system (4.38). This was also the category in which the Hybrid engine most clearly outperformed the RAG system (4.12 vs.\ 3.50).
-
-Category~B (novel questions) was the weakest category for the RAG system (3.00), and the only one in which the Hybrid engine (3.30) scored noticeably above it.
+Prompt-Only scored highest in every category. Category~C (informal coaching
+questions) showed the largest gap. Category~D showed the smallest gap, and
+was the only category where the Hybrid engine clearly outperformed RAG
+(4.12 vs.\ 3.50).
 
 \subsubsection{Curriculum Guardrail Results}
 
-All four out-of-scope questions (Category~E) were evaluated on a binary pass/fail basis. A system was counted as passing if it refused to apply the forbidden method or explicitly stated that it lay outside the Bac program.
-
 \begin{table}[H]
 \centering
-\caption{Curriculum guardrail results: number of out-of-scope questions correctly refused (out of 4). A pass means the system refused the forbidden method or explicitly flagged it as \textit{hors programme}.}
+\caption{Out-of-scope questions correctly refused (out of 4).}
 \label{tab:guardrail-results}
 \begin{tabular}{lr}
 \toprule
@@ -192,172 +200,150 @@ Hybrid      & 4/4 \\
 \end{tabular}
 \end{table}
 
-All three systems correctly refused all four out-of-scope requests. The forbidden methods included L'Hôpital's rule, matrix diagonalization, Taylor series, and Lebesgue integration. In each case, the systems either refused the request directly or redirected the student toward a Bac-compatible alternative.
+All three systems correctly refused all four out-of-scope requests.
 
-\subsection{Per-Question Retrieval Breakdown}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Retrieval Analysis}
 \label{subsec:per-question-breakdown}
 
-The aggregate comparison in Table~\ref{tab:human-evaluation} shows that the Prompt-Only system outperformed both retrieval-based systems overall. To better understand this result, we examined the retrieval pipeline's behavior on each of the 19 evaluation queries. Table~\ref{tab:per-question-retrieval} reports the routing case and best L2 distance for both the RAG and Hybrid engines.
+To understand why the retrieval-based systems scored lower, we examined the
+retrieval pipeline's behavior on each query.
+
+\subsubsection{Per-Question Retrieval Metadata}
 
 \begin{table}[H]
 \centering
-\caption{Per-question retrieval metadata for the RAG and Hybrid systems. All 19 queries were classified as Case~A (strong match, $d \leq 1.2$). The RAG and Hybrid engines produced identical distances because the Hybrid engine reuses the same retrieval pipeline.}
+\caption{Per-question retrieval: routing case and best L2 distance. All 19
+queries were classified as Case~A ($d \leq 1.2$). Both engines produced
+identical distances (same retrieval pipeline).}
 \label{tab:per-question-retrieval}
 \begin{tabular}{llllr}
 \toprule
 \textbf{ID} & \textbf{Cat.} & \textbf{Chapter} & \textbf{Case} & \textbf{Best dist.} \\
 \midrule
-A01 & A & Nombres complexes         & A & 0.8030 \\
-A02 & A & Suites réelles            & A & 0.4546 \\
-A03 & A & Intégrales                & A & 0.7307 \\
-A04 & A & Identité de Bézout        & A & 0.8215 \\
+A01 & A & Nombres complexes        & A & 0.8030 \\
+A02 & A & Suites réelles           & A & 0.4546 \\
+A03 & A & Intégrales               & A & 0.7307 \\
+A04 & A & Identité de Bézout       & A & 0.8215 \\
 A05 & A & Équations différentielles & A & 0.7849 \\
 \midrule
-B01 & B & Fonction logarithme       & A & 0.6268 \\
-B02 & B & Probabilités              & A & 0.3989 \\
-B03 & B & Fonction exponentielle    & A & 0.6238 \\
-B04 & B & Géométrie dans l'espace   & A & 0.5013 \\
+B01 & B & Fonction logarithme      & A & 0.6268 \\
+B02 & B & Probabilités             & A & 0.3989 \\
+B03 & B & Fonction exponentielle   & A & 0.6238 \\
+B04 & B & Géométrie dans l'espace  & A & 0.5013 \\
 B05 & B & Divisibilité dans $\mathbb{Z}$ & A & 0.6079 \\
 \midrule
-C01 & C & Continuité et limites     & A & 0.9192 \\
-C02 & C & Dérivabilité              & A & 0.8064 \\
-C03 & C & Primitives                & A & 0.7047 \\
+C01 & C & Continuité et limites    & A & 0.9192 \\
+C02 & C & Dérivabilité             & A & 0.8064 \\
+C03 & C & Primitives               & A & 0.7047 \\
 \midrule
-D01 & D & Suites réelles            & A & 0.8929 \\
-D02 & D & Nombres complexes         & A & 0.9606 \\
+D01 & D & Suites réelles           & A & 0.8929 \\
+D02 & D & Nombres complexes        & A & 0.9606 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The main pattern in these results is their uniformity: every query was classified as Case~A by both engines. The best L2 distances ranged from 0.40 to 0.96, remaining well below the strong-match threshold of 1.2. Under the current routing rules, the retrieval pipeline therefore treated all graded queries as strong matches, including the novel questions (Category~B), the informal student queries (Category~C), and the Derja questions (Category~D). The implications of this pattern are discussed in Section~\ref{subsec:retrieval-routing-discussion}.
+Every query fell into Case~A. Distances ranged from 0.40 to 0.96, well
+below the 1.2 threshold. This means the Hybrid engine's Cases~B and~C were
+never activated---it behaved identically to RAG throughout the evaluation.
 
-\subsection{Retrieval and Routing Analysis}
+\subsubsection{Case Distribution and Two-Stage Behavior}
 \label{subsec:retrieval-routing-analysis}
-
-\subsubsection{Case Distribution}
-
-Table~\ref{tab:case-distribution} summarizes the routing outcome across all 19 queries. Since every query fell into Case~A, the distinctive Hybrid behaviors associated with Cases~B and~C---namely, combining retrieved context with curriculum knowledge or falling back to pure prompt-based generation---were never activated during the evaluation.
 
 \begin{table}[H]
 \centering
-\caption{Retrieval routing case distribution across all 19 evaluation queries.
-Case~A: strong match ($d \leq 1.2$); Case~B: partial match ($1.2 < d \leq 1.6$);
-Case~C: no useful match ($d > 1.6$).}
+\caption{Routing case distribution. The second retrieval pass (course
+material) was never activated.}
 \label{tab:case-distribution}
 \begin{tabular}{lrrl}
 \toprule
-\textbf{Routing Case} & \textbf{RAG} & \textbf{Hybrid} & \textbf{Description} \\
+\textbf{Case} & \textbf{RAG} & \textbf{Hybrid} & \textbf{Description} \\
 \midrule
-Case~A & 19 & 19 & Strong retrieval ($d \leq 1.2$) \\
-Case~B &  0 &  0 & Partial match ($1.2 < d \leq 1.6$) \\
-Case~C &  0 &  0 & No useful match ($d > 1.6$) \\
+A & 19 & 19 & Strong match ($d \leq 1.2$) \\
+B &  0 &  0 & Partial match \\
+C &  0 &  0 & No useful match \\
 \bottomrule
 \end{tabular}
 \end{table}
-This has an important structural consequence: because the Hybrid engine operated exclusively in Case~A throughout the evaluation, it behaved in practice like the standalone RAG system for every query. The three-case routing mechanism, which is the main architectural distinction of the Hybrid engine, remained inactive in this experiment. This helps explain the near-identical scores reported in Table~\ref{tab:human-evaluation} (RAG: 3.22, Hybrid: 3.25).
-\subsubsection{First-Pass vs.\ Second-Pass Retrieval}
-The RAG pipeline uses a two-stage retrieval strategy: a first pass targeting corrections (\texttt{is\_solution=true}) and a second pass targeting course material (\textit{cours}), activated only when the first pass yields a best distance above the strong-match threshold ($d > 1.2$).
-\begin{table}[H]
-\centering
-\caption{Two-stage retrieval behavior per graded query (categories A--D).
-The first pass always retrieved 10 correction-type documents.}
-\label{tab:two-stage-retrieval}
-\begin{tabular}{llrrrr}
-\toprule
-\textbf{ID} & \textbf{Case} & \textbf{Best dist.} & \textbf{1st pass} & \textbf{2nd pass} & \textbf{Selected} \\
-\midrule
-A01 & A & 0.80 & 10 & 0 & 7 \\
-A02 & A & 0.45 & 10 & 0 & 11 \\
-A03 & A & 0.73 & 10 & 0 & 11 \\
-A04 & A & 0.82 & 10 & 0 & 7 \\
-A05 & A & 0.78 & 10 & 0 & 12 \\
-\midrule
-B01 & A & 0.63 & 10 & 0 & 7 \\
-B02 & A & 0.40 & 10 & 0 & 6 \\
-B03 & A & 0.62 & 10 & 0 & 12 \\
-B04 & A & 0.50 & 10 & 0 & 6 \\
-B05 & A & 0.61 & 10 & 0 & 7 \\
-\midrule
-C01 & A & 0.92 & 10 & 0 & 10 \\
-C02 & A & 0.81 & 10 & 0 & 13 \\
-C03 & A & 0.70 & 10 & 0 & 12 \\
-\midrule
-D01 & A & 0.89 & 10 & 0 & 8 \\
-D02 & A & 0.96 & 10 & 0 & 6 \\
-\bottomrule
-\end{tabular}
-\end{table}
-The second pass was never triggered. The first pass consistently returned 10 correction documents, and the selection stage (filtering, top-$n$ truncation, and companion pairing) reduced these to between 6 and 13 documents per query. As a result, the LLM was conditioned exclusively on past corrections and exercise solutions, never on theorem definitions or course notes. This is particularly relevant for coaching-style questions (Category~C), which ask for conceptual explanations rather than worked solutions and may therefore be less well served by correction-only context.
 
-\subsubsection{Retrieval Quality: Distance Distribution}
+The first pass consistently returned 10 correction documents; the selection
+stage reduced these to 6--13 per query. No course material was retrieved,
+so the LLM was conditioned exclusively on past corrections, never on
+theorem definitions---a poor fit for coaching questions (Category~C).
+
+\subsubsection{Distance Statistics}
 
 \begin{table}[H]
 \centering
-\caption{L2 distance statistics for the best-matching retrieved document across all 19 queries. Lower distance indicates better semantic match. All values remain well below the strong-match threshold of 1.2.}
+\caption{L2 distance statistics for best-matching documents (19 queries).}
 \label{tab:distance-stats}
 \begin{tabular}{lr}
 \toprule
 \textbf{Statistic} & \textbf{Value} \\
 \midrule
-Mean best distance   & 0.7361 \\
-Median best distance & 0.7901 \\
-Min best distance    & 0.3989 \\
-Max best distance    & 0.9606 \\
-Std deviation        & 0.1561 \\
-\midrule
-Strong-match threshold & 1.2000 \\
+Mean     & 0.7361 \\
+Median   & 0.7901 \\
+Min      & 0.3989 \\
+Max      & 0.9606 \\
+Std dev  & 0.1561 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The distance distribution is tightly clustered: 10 of the 19 queries had a best distance below 0.8, while the remaining 9 fell between 0.8 and 1.0. No query exceeded 1.0. On the basis of L2 distance alone, retrieval appears consistently strong. However, as the chapter-match analysis below shows, low distance does not necessarily imply topical relevance.
+All distances fell below 1.0. By distance alone, retrieval looks strong.
+But as the chapter match analysis reveals, low distance does not guarantee
+topical relevance.
 
 \subsubsection{Chapter Match Analysis}
 \label{subsubsec:chapter-match}
 
-A retrieved document is only useful if it addresses the relevant mathematical topic. We therefore checked whether the chapter metadata of the retrieved documents matched the expected chapter for each query. Table~\ref{tab:chapter-match} summarizes the result.
-
 \begin{table}[H]
 \centering
-\small
-\caption{Chapter match analysis: whether the top retrieved documents included at least one document from the expected chapter. }
+\caption{Chapter match: whether retrieved documents included the expected
+chapter. Overall match rate: 8/19 (42\%).}
 \label{tab:chapter-match}
-\begin{tabular}{llll}
+\begin{tabular}{lllll}
 \toprule
-\textbf{ID} & \textbf{Expected chapter} & \textbf{Retrieved chapters (sample)} & \textbf{Match} \\
+\textbf{ID} & \textbf{Expected} & \textbf{Retrieved (sample)} & \textbf{Match} \\
 \midrule
-A01 & Nombres complexes & Bac corrections, Géométrie dans l'espace & MISS \\
-A02 & Suites réelles & Intégrales, Fct.\ logarithme, Bac corrections & MISS \\
-A03 & Intégrales & Intégrales, Fct.\ exponentielle, Bac corrections & MATCH \\
-A04 & Identité de Bézout & Bac corrections, Identité de Bézout & MATCH \\
-A05 & Éq.\ différentielles & Bac corrections, Primitives, Géom.\ espace & MISS \\
+A01 & Nombres complexes     & Bac corrections, Géom.\ espace & MISS \\
+A02 & Suites réelles        & Intégrales, Fct.\ log, Bac & MISS \\
+A03 & Intégrales            & Intégrales, Fct.\ exp, Bac & MATCH \\
+A04 & Identité de Bézout    & Bac corrections, Bézout & MATCH \\
+A05 & Éq.\ différentielles & Bac, Primitives, Géom. & MISS \\
 \midrule
-B01 & Fct.\ logarithme & Bac corrections & MISS \\
-B02 & Probabilités & Bac corrections & MISS \\
-B03 & Fct.\ exponentielle & Fct.\ exponentielle, Dérivabilité, Fct.\ logarithme & MATCH \\
-B04 & Géom.\ dans l'espace & Bac corrections, Identité de Bézout & MATCH \\
-B05 & Divisibilité dans $\mathbb{Z}$ & Bac corrections, Identité de Bézout & MATCH \\
+B01 & Fct.\ logarithme     & Bac corrections & MISS \\
+B02 & Probabilités          & Bac corrections & MISS \\
+B03 & Fct.\ exponentielle  & Fct.\ exp, Dérivabilité & MATCH \\
+B04 & Géom.\ espace        & Bac corrections, Bézout & MATCH \\
+B05 & Divisibilité          & Bac corrections, Bézout & MATCH \\
 \midrule
-C01 & Continuité et limites & Bac corrections, Probabilités, Continuité & MATCH \\
-C02 & Dérivabilité & Fct.\ logarithme, Dérivabilité, Continuité & MATCH \\
-C03 & Primitives & Primitives & MATCH \\
+C01 & Continuité            & Bac, Probabilités, Continuité & MATCH \\
+C02 & Dérivabilité          & Fct.\ log, Dérivabilité & MATCH \\
+C03 & Primitives            & Primitives & MATCH \\
 \midrule
-D01 & Suites réelles & Suites réelles, Bac corrections & MATCH \\
-D02 & Nombres complexes & Bac corrections & MISS \\
+D01 & Suites réelles        & Suites réelles, Bac & MATCH \\
+D02 & Nombres complexes     & Bac corrections & MISS \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Only 8 of the 19 queries (42\%) retrieved at least one document from the expected chapter. In the remaining 11 cases, the retrieved documents were close in embedding space but belonged to different mathematical topics. One recurring pattern was the retrieval of generic ``Bac avec corrections Images'' documents, that is, multi-topic Baccalaureate exam compilations spanning several chapters within a single file. Such documents can achieve low L2 distances because they contain varied mathematical content, even when they do not address the specific topic required by the query.
+Only 42\% of queries retrieved documents from the correct chapter. A
+recurring pattern: generic ``Bac avec corrections'' compilations---which
+span multiple chapters---scored low distances against many queries,
+regardless of the specific topic.
 
-The retrieved document types reinforce this pattern: among the 142 documents selected across all 19 queries, 89 came from \textit{série} collections and 53 from \textit{bac\_officiel} compilations. No course material was retrieved, which is consistent with the fact that the second pass was never activated.
+The disconnect between distance-based quality (all below 1.0) and topical
+relevance (only 42\% chapter match) is a central finding. Its implications
+are examined in Section~\ref{subsec:rag-hybrid-discussion}.
 
-This gap between distance-based retrieval quality (all queries below 1.0) and topical relevance (only 42\% chapter match) is one of the central findings of the analysis. Its implications for the overall system comparison are examined in Section~\ref{subsec:retrieval-routing-discussion}.
 
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{Qualitative Examples}
 \label{subsec:qualitative-examples}
 
-The aggregate scores in Table~\ref{tab:human-evaluation} show that the Prompt-Only system outperformed the retrieval-based systems overall. To make these differences more concrete, this section presents excerpted outputs from two representative queries, each illustrating a distinct retrieval success or failure mode.
+Three examples illustrate distinct retrieval success and failure modes.
 
 % -- Custom style for output excerpts --
 \lstdefinestyle{sysoutput}{
@@ -371,124 +357,67 @@ The aggregate scores in Table~\ref{tab:human-evaluation} show that the Prompt-On
   belowskip=0.5em,
 }
 
-\subsubsection{Example~1: Prompt-Only Wins Despite Low Retrieval Distance
-  (B02 --- Probabilités)}
+\subsubsection{Example~1: Low Distance, Wrong Content (B02 --- Probabilités)}
 
-\noindent\textbf{Query:} \textit{``Une urne contient 5 boules blanches
-et 3 boules noires. On tire successivement 3 boules sans remise. Calculer
-la probabilité d'obtenir exactement 2 boules blanches.''}
+\noindent\textbf{Query:} \textit{``Urne: 5 blanches, 3 noires. Tirage
+successif sans remise de 3 boules. Calculer $P$(exactement 2 blanches).''}
 
-\smallskip\noindent
-This query achieved the lowest retrieval distance in the evaluation
-($d = 0.40$), but the retrieved documents did not match the intended topic
-closely enough: they came from generic ``Bac avec corrections'' compilations
-rather than probability-specific material.
+This query achieved the lowest distance in the evaluation ($d = 0.40$),
+yet the chapter match was a miss. The RAG system produced a brief answer
+citing generic retrieved sources. The Prompt-Only system correctly
+identified the exercise type and worked through both sub-questions with
+explicit combinatorial reasoning. The Hybrid system referenced the context
+for ``simultaneous'' draws---a different problem type than the sequential
+draws the question specifies.
 
-\begin{table}[H]
-\centering
-\caption{Excerpted openings for query B02 (Probabilités, $d=0.40$).}
-\label{tab:qual-b02}
-\small
-\begin{tabularx}{\textwidth}{l X}
-\toprule
-\textbf{System} & \textbf{Opening excerpt} \\
-\midrule
-RAG \newline {\scriptsize (524 chars)} &
-\texttt{D'après la Source 2, on utilise $P(E) =
-\frac{\text{favorable}}{\text{total}}$ \ldots}
-\newline
-\textit{Correct but brief. Relies on a generic retrieved source rather than a probability-specific method.} \\
-\addlinespace
-Prompt-Only \newline {\scriptsize (4{,}614 chars)} &
-\texttt{Chapitre : Probabilités \& Dénombrement \newline
-Méthode : Tirage successif sans remise $\Rightarrow$ arrangements
-$A_n^p$ \ldots}
-\newline
-\textit{Correctly identifies the exercise type and develops the solution step by step with the appropriate combinatorial method.} \\
-\addlinespace
-Hybrid \newline {\scriptsize (4{,}057 chars)} &
-\texttt{D'après le contexte fourni, pour un tirage simultané de 3 boules
-\ldots}
-\newline
-\textit{Longer than RAG, but draws on retrieved context for simultaneous draws, which does not match the sequential setup of the question.} \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\noindent\textbf{Takeaway:} Even with the best retrieval distance, the
+retrieved content addressed a variant of the problem, and the RAG
+instruction to rely on context constrained the response.
 
-\noindent\textbf{Takeaway.}\enspace
-This example shows that a low retrieval distance alone does not guarantee useful context. Although retrieval appeared strong numerically, the retrieved material guided the RAG-based systems toward a less appropriate framing of the problem, whereas the Prompt-Only baseline identified the correct method directly.
+\subsubsection{Example~2: Correct Chapter Match (D01 --- Suites réelles)}
 
-\subsubsection{Example~2: RAG Competitive --- Correct Chapter Match
-  (D01 --- Suites réelles)}
+\noindent\textbf{Query (Derja):} \textit{``Kifech nethbet elli suite
+monotone et bornée convergente?''}
 
-\noindent\textbf{Query (Tunisian Derja):} \textit{``Kifech nethbet elli
-suite monotone et bornée convergente? 3tini el méthode bil français
-mathematique.''} \newline
-\textit{(Translation: How do I prove that a monotone bounded sequence
-converges? Give me the method in formal French mathematics.)}
+One of the few queries where retrieval found the correct chapter. All three
+systems produced substantive answers. The quality gap was visibly narrower
+than in Example~1, consistent with Category~D showing the smallest
+inter-system gap in Table~\ref{tab:per-category}. This suggests that corpus
+coverage, not embedding quality, is the binding constraint.
 
-\smallskip\noindent
-For this query, the retrieved documents included material from the
-``Suites réelles'' chapter, making it one of the clearer retrieval matches
-in the evaluation.
+\subsubsection{Example~3: Subtopic Mismatch (C01 --- Continuité)}
 
-\begin{table}[H]
-\centering
-\caption{Excerpted openings for query D01 (Suites réelles, $d=0.89$,
-chapter match: \textsc{match}).}
-\label{tab:qual-d01}
-\small
-\begin{tabularx}{\textwidth}{l X}
-\toprule
-\textbf{System} & \textbf{Opening excerpt} \\
-\midrule
-RAG \newline {\scriptsize (5{,}150 chars)} &
-\texttt{Ahla bik! �� Suites réelles --- Convergence d'une suite monotone
-bornée. \newline
-Théorème admis : Toute suite croissante et majorée est convergente
-\ldots}
-\newline
-\textit{Correctly identifies the chapter and states the relevant theorem with a structured proof method.} \\
-\addlinespace
-Prompt-Only \newline {\scriptsize (7{,}891 chars)} &
-\texttt{Chapitre : Suites Réelles (Chapitre 3) \newline
-Méthode générale pour démontrer la convergence d'une suite monotone
-bornée : \newline
-Étape 1 : Montrer que $(u_n)$ est monotone \ldots}
-\newline
-\textit{Most complete of the three, with a clear step-by-step explanation.} \\
-\addlinespace
-Hybrid \newline {\scriptsize (4{,}661 chars)} &
-\texttt{Ahla! Suites réelles --- Théorème de convergence monotone. \newline
-D'après le contexte, le théorème fondamental est \ldots}
-\newline
-\textit{Also accurate and focused, though shorter than Prompt-Only.} \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\noindent\textbf{Query:} \textit{``Je comprends pas comment on étudie la
+continuité d'une fonction en un point.''}
 
-\noindent\textbf{Takeaway.}\enspace
-When retrieval returns topically relevant material, the gap between systems becomes smaller. Prompt-Only still provides the most complete answer, but the retrieval-based systems are clearly more competitive than in Example~1.
+The student asks about \textit{pointwise} continuity. The retrieval found
+material about continuity \textit{on intervals}---related but wrong
+subtopic ($d = 0.92$, chapter match but wrong aspect). The RAG system
+adapted the interval material but never provided the three conditions for
+pointwise continuity. The Prompt-Only system stated the definition directly
+and worked through a concrete example.
 
-\subsection{Embedding Model Comparison: BGE-M3 vs.\ Google text-embedding}
+The Hybrid engine acknowledged the mismatch (``le contexte ne contient pas
+la définition formelle'') but could not override its Case~A instructions.
+This motivates threshold recalibration in future work.
+
+\paragraph{Pattern.}
+When retrieval finds the correct chapter (Example~2), the gap narrows.
+When it returns semantically close but topically mismatched content
+(Examples~1 and~3), it actively harms quality. Corpus coverage---not
+embedding distance---is the primary bottleneck.
+
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Embedding Model Comparison}
 \label{subsec:embedding-comparison}
 
-The choice of embedding model directly affects retrieval behavior. The production system uses BGE-M3~\cite{chen2024bge_m3}, a multilingual model with 1024-dimensional dense vectors. To examine whether another embedding model would yield different retrieval patterns, we compared BGE-M3 with Google's \texttt{text-embedding-005} model (768-dimensional vectors) accessed through the Vertex AI API.
-
-\subsubsection{Experimental Setup}
-
-Both models were used to embed the same 15 graded evaluation queries and the same indexed corpus. For each query, we retrieved the top-10 nearest documents using L2 distance and compared the results along three dimensions:
-\begin{enumerate}
-    \item \textbf{Best L2 distance}: the distance between the query and its nearest retrieved document. Lower values indicate a closer semantic match.
-    \item \textbf{Routing case distribution}: how these distances map to the Hybrid engine's three routing cases (A/B/C).
-    \item \textbf{Top-5 document overlap}: the extent to which both models retrieved the same documents.
-\end{enumerate}
-
-\subsubsection{Results}
+We compared BGE-M3 against Google's \texttt{text-embedding-005}
+(768-dimensional) on the same 15 queries and full corpus.
 
 \begin{table}[H]
 \centering
-\caption{Aggregate comparison of BGE-M3 vs.\ Google text-embedding-005 for retrieval on the Tunisian Bac Math corpus (15 queries, 1422 corpus chunks). L2 distance metrics are computed from the best-matching document per query.}
+\caption{BGE-M3 vs.\ Google text-embedding-005 (15 queries, 903 chunks).}
 \label{tab:embedding-aggregate}
 \begin{tabular}{lrr}
 \toprule
@@ -498,8 +427,7 @@ Embedding dimension      & 1024 & 768 \\
 Mean best L2 distance    & 0.6879 & 0.5116 \\
 Median best L2 distance  & 0.7307 & 0.5226 \\
 Queries in Case~A        & 15 & 15 \\
-Queries in Case~B        & 0 & 0 \\
-Queries in Case~C        & 0 & 0 \\
+Queries in Case~B/C      & 0 & 0 \\
 Mean top-5 overlap ratio & \multicolumn{2}{c}{0.23} \\
 \bottomrule
 \end{tabular}
@@ -507,11 +435,12 @@ Mean top-5 overlap ratio & \multicolumn{2}{c}{0.23} \\
 
 \begin{table}[H]
 \centering
-\caption{Per-query best L2 distance and routing case for BGE-M3 vs.\ Google text-embedding-005. Lower distance indicates a closer retrieval match. Cases: A = strong ($\leq 1.2$), B = partial ($\leq 1.6$), C = no match ($> 1.6$).}
+\caption{Per-query best L2 distance: BGE-M3 vs.\ Google.}
 \label{tab:embedding-per-query}
 \begin{tabular}{llrrlrl}
 \toprule
-\textbf{ID} & \textbf{Cat.} & \multicolumn{2}{c}{\textbf{BGE-M3}} & & \multicolumn{2}{c}{\textbf{Google}} \\
+\textbf{ID} & \textbf{Cat.} & \multicolumn{2}{c}{\textbf{BGE-M3}} & &
+\multicolumn{2}{c}{\textbf{Google}} \\
 \cmidrule(lr){3-4} \cmidrule(lr){6-7}
 & & \textbf{Dist.} & \textbf{Case} & & \textbf{Dist.} & \textbf{Case} \\
 \midrule
@@ -536,77 +465,39 @@ D02 & D & 0.9297 & A & & 0.6065 & A \\
 \end{tabular}
 \end{table}
 
-\subsubsection{Observations}
+\paragraph{Key findings.}
+Google produces 25.6\% lower distances on average, with lower variance.
+However, both models route all queries to Case~A, so the Hybrid engine
+would make identical decisions with either model. The top-5 overlap is
+only 0.23, meaning the models retrieve substantially different documents.
 
-Several findings emerge from this comparison.
+We retained BGE-M3 because: (1)~routing outcomes are identical, (2)~it
+runs locally (no API cost or latency), and (3)~the bottleneck is corpus
+coverage, not embedding quality. Switching models would lower distances
+but not fix the underlying corpus completeness issues.
 
-\paragraph{Google produces lower distances overall.}
-Google achieved a mean best L2 distance of 0.5116, compared with 0.6879 for BGE-M3 (Table~\ref{tab:embedding-aggregate}). This advantage was consistent across nearly all queries: Google produced the lower best distance for 14 of the 15 questions, with A02 as the only exception. Its distances were also less dispersed across queries.
 
-\paragraph{Routing outcomes remain unchanged.}
-Despite this difference, both models assigned all 15 queries to Case~A. Under the current routing thresholds, substituting Google embeddings for BGE-M3 would therefore not change the Hybrid engine's routing decisions.
-
-\paragraph{The two models often retrieve different neighborhoods.}
-The mean top-5 overlap ratio was only 0.23, indicating that the two models frequently retrieved different sets of nearby documents for the same query. Lower distance under one model did not imply that both models converged on the same local retrieval neighborhood.
-
-\paragraph{Implications for the production system.}
-These results suggest that \texttt{text-embedding-005} produced tighter nearest-neighbor matches on this corpus. However, this does not by itself imply that the end-to-end tutoring system would have performed better with Google embeddings. In the present setup, both models produced identical routing outcomes, and the broader evaluation showed that the main limitations of the retrieval-based systems were related to corpus coverage and retrieval usefulness rather than distance values alone. For that reason, the final production pipeline retained BGE-M3.
-
-\subsection{Digitization Quality Evaluation}
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{Digitization Quality}
 \label{subsec:ocr-evaluation}
 
-The quality of the RAG system's knowledge base depends directly on the accuracy of the digitization pipeline described in Section~\ref{subsec:digitization}. Errors introduced during OCR, such as a misread exponent, a dropped minus sign, or a corrupted fraction, propagate silently into the vector store and may affect the retrieved context presented to the generative model. To quantify this risk, we conducted a ground-truth evaluation of the Gemini multimodal OCR output against manually corrected reference texts.
+We evaluated Gemini's OCR output against manually corrected reference texts
+on a stratified sample covering dense math notation, text-heavy proofs,
+course material, and cleanly printed documents.
 
-\subsubsection{Metric Selection}
-
-We report three metrics, each capturing a different aspect of digitization fidelity.
-
-\paragraph{Character Error Rate (CER).}
-CER is a standard OCR metric~\cite{wang2023ocrbench}. It is defined as the character-level Levenshtein edit distance between the OCR output and the reference text, normalized by the length of the reference:
-\[
-\text{CER} = \frac{\text{editDistance}(\text{OCR}, \text{ref})}{|\text{ref}|}
-\]
-A CER of 0\% indicates a perfect transcription, whereas a CER of 5\% means that roughly one character in twenty would need correction. CER captures all character-level deviations equally, including whitespace, punctuation, letters, and mathematical symbols.
-
-We selected CER because it is widely used in the OCR literature and allows comparison with published benchmarks~\cite{wang2023ocrbench, mahdavi2019icdar_math}. Its main limitation is that it does not distinguish between errors of different mathematical importance: a misplaced space and an incorrect sign in an exponent contribute equally to the score, even though their impact is very different.
-
-\paragraph{Word Error Rate (WER).}
-WER operates at the word level, computing the Levenshtein distance between the tokenized OCR output and the tokenized reference, normalized by the reference word count. It penalizes word-level substitutions, insertions, and deletions, and is less sensitive than CER to minor formatting differences such as extra spaces or line-break variation. Although more common in speech recognition, it is also used in OCR evaluation for structured text.
-
-\paragraph{\LaTeX{} Math Expression Accuracy.}
-Neither CER nor WER distinguishes between mathematical content and natural-language text. A document may preserve the surrounding prose while corrupting the equations, or vice versa. To account for this, we additionally compute a \LaTeX{}-specific metric: the fraction of math expressions in the reference text (delimited by \texttt{\$...\$}, \texttt{\$\$...\$\$}, \texttt{\textbackslash(...\textbackslash)}, or \texttt{\textbackslash[...\textbackslash]}) that appear exactly in the OCR output. This metric targets the aspect most relevant for a mathematical RAG system, namely whether the equations that are embedded and later retrieved remain faithful to the original document.
-
-This metric is implementation-specific. We are not aware of a published OCR metric designed specifically for \LaTeX{} math-expression fidelity, although related work on mathematical expression recognition~\cite{mahdavi2019icdar_math} evaluates similar properties at the symbol and structure level.
-
-\subsubsection{Ground Truth Methodology}
-
-We selected a small stratified sample of digitized documents from the corpus in order to cover a range of document types and difficulty levels present in the knowledge base:
-
-\begin{itemize}
-    \item corrections with dense mathematical notation, such as complex numbers and integrals;
-    \item corrections with more text-heavy reasoning, such as proofs or sequence convergence;
-    \item course material containing theorem statements and definitions;
-    \item documents with fractions, summation notation, and multi-line equations, which are expected to be more difficult for OCR;
-    \item cleanly printed documents, included as a lower-difficulty baseline.
-\end{itemize}
-
-For each selected document, the Gemini OCR output (\texttt{.tex} file from GCS) was paired with a manually corrected reference version. The manual correction was performed by the author while consulting the original scanned image to resolve ambiguities. The corrected reference was kept structurally close to the OCR output so that the comparison reflected transcription accuracy rather than stylistic reformatting.
-
-\subsubsection{Results}
-
-Table~\ref{tab:ocr-quality} presents the per-sample and aggregate results.
+\paragraph{Metrics.}
+CER (character-level Levenshtein distance, normalized by reference
+length)~\cite{wang2023ocrbench}, WER (word-level), and \LaTeX{} math
+expression accuracy (fraction of math expressions preserved exactly).
 
 \begin{table}[H]
 \centering
-\caption{OCR digitization quality: Character Error Rate (CER), Word Error
-Rate (WER), and \LaTeX{} math expression accuracy, measured on a stratified
-sample of five ground truth pairs. Lower is better for CER/WER; higher is
-better for \LaTeX{} accuracy. Sample~3 contained no inline math delimiters
-in the OCR output, so \LaTeX{} accuracy is not applicable.}
+\caption{OCR quality on five ground truth samples. Lower CER/WER is better;
+higher \LaTeX{} accuracy is better.}
 \label{tab:ocr-quality}
 \begin{tabular}{llrrr}
 \toprule
-\textbf{Sample} & \textbf{Doc.\ type} & \textbf{CER (\%)} & \textbf{WER (\%)} & \textbf{\LaTeX{} Acc.\ (\%)} \\
+\textbf{Sample} & \textbf{Type} & \textbf{CER (\%)} & \textbf{WER (\%)} & \textbf{\LaTeX{} Acc.\ (\%)} \\
 \midrule
 Sample~1 & Correction (complexes)     & 5.4  & 10.0 & 66.7 \\
 Sample~2 & Cours (suites)             & 4.2  & 5.5  & 99.0 \\
@@ -614,40 +505,18 @@ Sample~3 & Correction (intégrales)    & 0.0  & 0.0  & ---  \\
 Sample~4 & Correction (probabilités)  & 4.1  & 5.8  & 100.0 \\
 Sample~5 & Cours (théorèmes)          & 13.4 & 8.8  & 95.5 \\
 \midrule
-\textbf{Average} & --- & \textbf{5.4} & \textbf{6.0} & \textbf{97.1} \\
+\textbf{Average} & & \textbf{5.4} & \textbf{6.0} & \textbf{97.1} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsubsection{Observations}
+The average CER of 5.4\% and \LaTeX{} accuracy of 97.1\% indicate largely
+faithful transcription. Four of five samples fall below 6\% CER, consistent
+with published multimodal OCR benchmarks~\cite{wang2023ocrbench}. Sample~5
+(dense theorem statements) was the weakest at 13.4\%, likely due to nested
+math environments.
 
-The average CER of 5.4\% and WER of 6.0\% indicate that the Gemini
-multimodal OCR pipeline generally produced faithful transcriptions of the
-source material. Four of the five samples remained below 6\% on both
-metrics, which is broadly consistent with the performance range reported
-for multimodal LLM-based OCR on structured documents~\cite{wang2023ocrbench}.
-The perfect CER and WER scores on Sample~3 suggest that cleanly printed
-correction pages with standard formatting pose little difficulty for the
-model.
-
-Sample~5 (cours, théorèmes) was the weakest case, with a CER of 13.4\%.
-This document contained dense theorem statements, nested mathematical
-structures, and multi-line display equations. The higher error rate likely
-reflects the added difficulty of recovering complex \LaTeX{} structure from
-scanned material, especially when alignment, delimiters, and line breaks are
-involved.
-
-The \LaTeX{} math expression accuracy averaged 97.1\% across the four
-samples for which it could be measured, meaning that most mathematical
-expressions were preserved exactly. Sample~1 (complexes correction) was the
-main exception, with only 2 of 3 expressions preserved exactly (66.7\%).
-Although the sample is too small for strong claims, it shows that notation-level
-errors do occur and may affect the correctness of retrieved context.
-
-These results suggest that OCR noise was not the dominant weakness of the
-knowledge base: overall digitization quality was high enough for the corpus
-to remain a reasonably faithful representation of the scanned source
-material. At the same time, the remaining errors may still have affected the
-retrieval-based systems, since a corrupted equation or reasoning step can be
-passed directly into the retrieved context. The Prompt-Only system, by
-construction, is not exposed to this source of error.
+The corpus is not dominated by OCR noise, but the occasional errors
+(roughly 1 in 20 characters, 1 in 30 math expressions) can corrupt
+retrieved context. This affects only the RAG and Hybrid systems, giving
+the Prompt-Only baseline an inherent advantage.
