@@ -670,7 +670,6 @@ documents using L2 distance and compared the results along three dimensions:
 
 \subsubsection{Results}
 
-% TODO: Fill after running: python evaluation/embedding_comparison.py
 \begin{table}[H]
 \centering
 \caption{Aggregate comparison of BGE-M3 vs.\ Google text-embedding-005 for
@@ -682,21 +681,21 @@ L2 distance metrics are computed from the best-matching document per query.}
 \textbf{Metric} & \textbf{BGE-M3} & \textbf{Google} \\
 \midrule
 Embedding dimension      & 1024 & 768 \\
-Mean best L2 distance    & TODO & TODO \\
-Median best L2 distance  & TODO & TODO \\
-Queries in Case~A        & TODO & TODO \\
-Queries in Case~B        & TODO & TODO \\
-Queries in Case~C        & TODO & TODO \\
-Mean top-5 overlap ratio & \multicolumn{2}{c}{TODO} \\
+Mean best L2 distance    & 0.6879 & 0.5116 \\
+Median best L2 distance  & 0.7307 & 0.5226 \\
+Queries in Case~A        & 15 & 15 \\
+Queries in Case~B        & 0 & 0 \\
+Queries in Case~C        & 0 & 0 \\
+Mean top-5 overlap ratio & \multicolumn{2}{c}{0.23} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-% TODO: Fill per-query comparison table
 \begin{table}[H]
 \centering
 \caption{Per-query best L2 distance and routing case for BGE-M3 vs.\ Google
-text-embedding-005. Lower distance = better retrieval match.}
+text-embedding-005. Lower distance = better retrieval match.
+Cases: A = strong ($\leq 1.2$), B = weak ($\leq 1.6$), C = no match ($> 1.6$).}
 \label{tab:embedding-per-query}
 \begin{tabular}{llrrlrl}
 \toprule
@@ -705,21 +704,76 @@ text-embedding-005. Lower distance = better retrieval match.}
 \cmidrule(lr){3-4} \cmidrule(lr){6-7}
 & & \textbf{Dist.} & \textbf{Case} & & \textbf{Dist.} & \textbf{Case} \\
 \midrule
-% TODO: Fill from embedding_comparison.py output
+A01 & A & 0.7623 & A & & 0.4783 & A \\
+A02 & A & 0.3332 & A & & 0.4357 & A \\
+A03 & A & 0.7307 & A & & 0.4763 & A \\
+A04 & A & 0.8215 & A & & 0.6138 & A \\
+A05 & A & 0.7849 & A & & 0.6494 & A \\
+B01 & B & 0.6268 & A & & 0.4537 & A \\
+B02 & B & 0.3989 & A & & 0.3244 & A \\
+B03 & B & 0.6238 & A & & 0.3911 & A \\
+B04 & B & 0.5013 & A & & 0.4467 & A \\
+B05 & B & 0.6079 & A & & 0.5226 & A \\
+C01 & C & 0.8744 & A & & 0.5583 & A \\
+C02 & C & 0.8064 & A & & 0.5708 & A \\
+C03 & C & 0.7047 & A & & 0.6034 & A \\
+D01 & D & 0.8113 & A & & 0.5437 & A \\
+D02 & D & 0.9297 & A & & 0.6065 & A \\
+\midrule
+\textbf{Mean} & & \textbf{0.6879} & & & \textbf{0.5116} & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsubsection{Observations}
 
-% TODO: Write observations after running the experiment. Expected analysis:
-% 1. Which model produces lower distances on average?
-% 2. Does one model route more queries to Case A (strong match)?
-% 3. How much overlap in retrieved documents? High overlap suggests the
-%    choice of embedding model matters less than corpus coverage.
-% 4. Are there specific categories (e.g., Derja) where one model dominates?
-% 5. Implications for the system: would switching to Google embeddings
-%    change the overall results?
+Five findings emerge from the embedding comparison experiment.
+
+\paragraph{Google produces uniformly lower distances.}
+The Google model achieves a mean best L2 distance of 0.5116, compared to
+0.6879 for BGE-M3—a 25.6\% reduction (Table~\ref{tab:embedding-aggregate}).
+This advantage is consistent: Google yields a lower best distance on 14 of
+15 queries (Table~\ref{tab:embedding-per-query}), with query A02 being the
+single exception (BGE-M3: 0.3332, Google: 0.4357). The lower standard
+deviation for Google (0.0890 vs.\ 0.1665) indicates more uniform retrieval
+quality across queries.
+
+\paragraph{Both models route all queries to Case~A.}
+Despite the distance difference, both models place all 15 queries in Case~A
+(best distance $\leq 1.2$), meaning the retrieval routing thresholds used by
+the Hybrid engine would produce identical routing decisions regardless of
+which embedding model is deployed. No query falls into Case~B or Case~C for
+either model.
+
+\paragraph{Retrieved documents differ substantially.}
+The mean top-5 overlap ratio of 0.23 indicates that only approximately one
+in five documents appears in the top-5 results of both models. This low
+overlap demonstrates that the two models construct meaningfully different
+semantic representations of mathematical content and retrieve different
+corpus chunks for the same query.
+
+\paragraph{Category-level patterns.}
+The per-category means reveal that Google's advantage is largest for
+Category~B questions (BGE-M3: 0.5517, Google: 0.4277—a 22.5\% reduction)
+and Category~C questions (BGE-M3: 0.7952, Google: 0.5775—a 27.4\%
+reduction). Categories~C and~D, which contain more complex multi-part
+questions, show the highest absolute distances for both models, suggesting
+that these queries are inherently harder to match against the corpus.
+
+\paragraph{Implications for the production system.}
+The results suggest that Google's \texttt{text-embedding-005} produces
+tighter semantic matches on this corpus. However, three factors justify
+retaining BGE-M3 in the production pipeline. First, the routing outcomes are
+identical—both models assign Case~A to every query—so the Hybrid engine
+would make the same retrieval-vs-generation decision with either model.
+Second, BGE-M3 is a local model that requires no API calls, eliminating
+latency, cost, and rate-limit concerns at inference time. Third, given that
+the blind evaluation (Section~\ref{subsec:blind-evaluation}) showed that the
+Prompt-Only baseline outperformed the retrieval-based systems overall, the
+bottleneck in system performance lies in corpus coverage and retrieval
+integration rather than in embedding quality. Switching to Google embeddings
+would produce lower distances but would not address the underlying corpus
+completeness issues identified in Section~\ref{subsec:interpretation}.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
