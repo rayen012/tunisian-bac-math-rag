@@ -155,6 +155,18 @@ mathematical text could improve retrieval precision at the critical
 boundary between relevant and irrelevant documents. These remain open
 questions for future work.
 
+The digitization quality evaluation (Section~\ref{subsec:ocr-evaluation})
+provides a complementary perspective. With an average CER of 5.4\% and
+\LaTeX{} math accuracy of 97.1\%, the corpus is not dominated by OCR
+errors—but it is not error-free either. Roughly one in twenty characters
+and one in thirty math expressions contain transcription mistakes. These
+errors affect only the retrieval-based systems, since the Prompt-Only
+baseline never accesses the corpus. While we cannot isolate the exact
+contribution of OCR noise to the RAG system's lower scores, it is a
+plausible contributing factor: a single corrupted exponent or dropped sign
+in a retrieved correction can mislead the generative model's entire
+solution.
+
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Limitations}

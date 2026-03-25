@@ -23,14 +23,20 @@ anonymized outputs across 15 questions on four criteria, produced a result
 that ran counter to our initial expectations: the Prompt-Only baseline
 (mean 4.32/5) outperformed both the RAG system (3.22/5) and the Hybrid
 engine (3.25/5) on every criterion. All three systems passed all four
-curriculum guardrail tests, correctly refusing out-of-scope methods. These
-results suggest that, for a domain where the generative model's parametric
-knowledge already covers the mathematical content, and where the retrieval
-corpus is modest in scale, careful prompt engineering can be more effective
-than retrieval augmentation. The value of RAG appears to depend not only on
-the quality of the retrieval pipeline but also on whether the corpus is
-large and precise enough to consistently outperform what the model already
-knows.
+curriculum guardrail tests, correctly refusing out-of-scope methods. A
+separate ground truth evaluation of the digitization pipeline confirmed an
+average Character Error Rate of 5.4\% and a \LaTeX{} math expression
+accuracy of 97.1\%, indicating that the Gemini-based OCR produces largely
+faithful transcriptions but that occasional errors in mathematical notation
+can propagate into the retrieved context.
+
+These results suggest that, for a domain where the generative model's
+parametric knowledge already covers the mathematical content, and where the
+retrieval corpus is modest in scale, careful prompt engineering can be more
+effective than retrieval augmentation. The value of RAG appears to depend
+not only on the quality of the retrieval pipeline but also on whether the
+corpus is large and precise enough to consistently outperform what the
+model already knows.
 
 The system addresses a practical gap in educational technology for Tunisian
 secondary school students, providing the first AI tutoring tool specifically
