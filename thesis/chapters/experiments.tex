@@ -534,113 +534,224 @@ Section~\ref{subsec:retrieval-routing-discussion}.
 \subsection{Qualitative Examples}
 \label{subsec:qualitative-examples}
 
-To illustrate the concrete effects of the retrieval findings above, we
-present excerpts from three representative queries.
+The aggregate scores in Table~\ref{tab:human-evaluation} show that the
+Prompt-Only system outperformed the retrieval-based systems overall. To make
+the differences concrete, we present excerpted outputs from three
+representative queries. Each example is selected to illustrate a distinct
+failure or success mode of the retrieval pipeline.
 
-\subsubsection{Example~1: Best Retrieval Distance (B02 --- Probabilités)}
+% -- Custom style for output excerpts --
+\lstdefinestyle{sysoutput}{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  frame=single,
+  numbers=none,
+  xleftmargin=1em,
+  xrightmargin=1em,
+  aboveskip=0.5em,
+  belowskip=0.5em,
+}
 
-Question B02 achieved the lowest retrieval distance ($d = 0.40$) across all
-queries. The question asks: \textit{``Une urne contient 5 boules blanches
+% ·······································································
+\subsubsection{Example~1: Prompt-Only Wins Despite Low Retrieval Distance
+  (B02 --- Probabilités)}
+
+\noindent\textbf{Query:} \textit{``Une urne contient 5 boules blanches
 et 3 boules noires. On tire successivement 3 boules sans remise. Calculer
 la probabilité d'obtenir exactement 2 boules blanches.''}
 
-\begin{itemize}
-    \item \textbf{RAG} (Case~A, $d=0.40$, answer length: 524 chars):
-    The RAG system produced a short answer that began with the correct
-    probability formula ($P(E) = \frac{\text{favorable}}{\text{total}}$)
-    and cited retrieved sources (``D'après la Source~2''). However, despite
-    the low distance, the retrieved documents were labeled as generic
-    ``Bac avec corrections Images'' rather than probability-specific material,
-    and the chapter match was a miss.
+\smallskip\noindent
+This query achieved the lowest retrieval distance in the entire evaluation
+($d = 0.40$). Yet the chapter match was a miss: the retrieved documents were
+generic ``Bac avec corrections'' compilations, not probability-specific
+material.
 
-    \item \textbf{Prompt-Only} (answer length: 4{,}614 chars):
-    The Prompt-Only system produced a substantially longer and more structured
-    answer, opening with an identification of the exercise type
-    (``Probabilités \& Dénombrement''), recalling the combinatorial formula
-    for draws without replacement ($A_n^p$), and proceeding step by step.
+\begin{table}[H]
+\centering
+\caption{Excerpted openings for query B02 (Probabilités, $d=0.40$).}
+\label{tab:qual-b02}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{System} & \textbf{Opening excerpt} \\
+\midrule
+RAG \newline {\scriptsize (524 chars)} &
+\texttt{D'après la Source 2, on utilise $P(E) =
+\frac{\text{favorable}}{\text{total}}$ \ldots}
+\newline
+\textit{Applies the correct formula but produces only a brief
+calculation. Cites a generic retrieved source rather than
+probability-specific material.} \\
+\addlinespace
+Prompt-Only \newline {\scriptsize (4{,}614 chars)} &
+\texttt{Chapitre : Probabilités \& Dénombrement \newline
+Méthode : Tirage successif sans remise $\Rightarrow$ arrangements
+$A_n^p$ \ldots}
+\newline
+\textit{Identifies the exercise type, recalls the combinatorial formula
+for draws without replacement, and works through both sub-questions
+step by step with explicit intermediate calculations.} \\
+\addlinespace
+Hybrid \newline {\scriptsize (4{,}057 chars)} &
+\texttt{D'après le contexte fourni, pour un tirage simultané de 3 boules
+\ldots}
+\newline
+\textit{Produces a longer answer than RAG, but references the retrieved
+context for ``simultaneous'' draws---a different problem type than the
+sequential draws the question specifies.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-    \item \textbf{Hybrid} (Case~A, source=retrieval, answer length: 4{,}057 chars):
-    The Hybrid engine, operating in Case~A, behaved as a RAG system. Its
-    answer was more detailed than the RAG output but referenced
-    the retrieved context for ``simultaneous'' draws—a different problem
-    type than the sequential draws asked for.
-\end{itemize}
+\noindent\textbf{Takeaway.}\enspace
+Even with the best retrieval distance in the evaluation, the RAG system
+produced a shorter and less structured answer than the Prompt-Only baseline.
+The retrieved context was semantically close but addressed a variant of the
+problem (simultaneous vs.\ sequential draws), and the model's instruction to
+rely on provided context constrained its response. The Prompt-Only system,
+unconstrained by retrieval, correctly identified the exercise type and
+applied the appropriate combinatorial method.
 
-This example illustrates a key pattern: even with the best retrieval distance
-in the evaluation, the RAG system produced a shorter and less complete answer
-than the Prompt-Only baseline. The retrieved context, while semantically
-close, addressed a variant of the problem (simultaneous vs.\ sequential
-draws), and the model's instruction to rely on provided context may have
-constrained its response.
+% ·······································································
+\subsubsection{Example~2: RAG Competitive --- Correct Chapter Match
+  (D01 --- Suites réelles)}
 
-\subsubsection{Example~2: Informal Coaching Question (C01 --- Continuité)}
-
-Question C01 is an informal student question in coaching mode:
-\textit{``Je comprends pas comment on étudie la continuité d'une fonction
-en un point. C'est quoi la méthode? Donne moi un exemple simple svp.''}
-
-\begin{itemize}
-    \item \textbf{RAG} (Case~A, $d=0.92$, answer length: 3{,}014 chars):
-    The RAG system retrieved correction-type documents and noted that ``le
-    CONTEXTE fourni contient des exemples de démonstration de la continuité
-    de fonctions sur des intervalles.'' The retrieved material addressed
-    continuity on intervals rather than continuity at a point—a related but
-    distinct topic. The answer adapted this context but lacked a clear,
-    simple example as the student requested.
-
-    \item \textbf{Prompt-Only} (answer length: 5{,}019 chars):
-    The Prompt-Only system identified the topic as ``Fonctions Numériques
-    (Chapitre~2)'' and stated the three conditions for continuity at a point
-    directly from its parametric knowledge. It provided the explicit
-    definition that the student was asking for.
-
-    \item \textbf{Hybrid} (Case~A, answer length: 3{,}865 chars):
-    The Hybrid engine also relied on retrieval and noted that the context
-    contained examples of ``continuité de fonctions sur un intervalle,''
-    acknowledging that ``il ne contient pas la définition formelle ni la
-    méthode'' for pointwise continuity. Despite recognizing the mismatch,
-    it was constrained by its Case~A instructions to treat the context as
-    primary.
-\end{itemize}
-
-This example highlights the mismatch between the corpus content (worked exam
-corrections) and the query type (conceptual coaching question). The retrieved
-documents were semantically close—both involve continuity—but did not contain
-the pedagogical explanation the student needed. The Prompt-Only system, free
-to draw on its parametric knowledge, provided a more directly useful answer.
-
-\subsubsection{Example~3: Derja Question (D01 --- Suites réelles)}
-
-Question D01 is in Tunisian Arabic (Derja): \textit{``Kifech nethbet elli
+\noindent\textbf{Query (Tunisian Derja):} \textit{``Kifech nethbet elli
 suite monotone et bornée convergente? 3tini el méthode bil français
-mathematique.''} (How do I prove that a monotone bounded sequence converges?
-Give me the method in formal French mathematics.)
+mathematique.''} \newline
+\textit{(Translation: How do I prove that a monotone bounded sequence
+converges? Give me the method in formal French mathematics.)}
 
-\begin{itemize}
-    \item \textbf{RAG} ($d=0.89$, answer length: 5{,}150 chars):
-    The RAG system opened with a Derja motivational line and correctly
-    identified the topic as ``Suites réelles.'' The retrieved chapter matched
-    (one of the few correct matches in the evaluation), and the answer
-    referenced the monotone convergence theorem. The response was detailed.
+\smallskip\noindent
+This is one of the few queries where the chapter match succeeded
+(Table~\ref{tab:chapter-match}): the retrieved documents included material
+from the ``Suites réelles'' chapter.
 
-    \item \textbf{Prompt-Only} (answer length: 7{,}891 chars):
-    The Prompt-Only system produced the longest answer of the three, with
-    a comprehensive treatment of the theorem and explicit step-by-step
-    methodology for proving convergence.
+\begin{table}[H]
+\centering
+\caption{Excerpted openings for query D01 (Suites réelles, $d=0.89$,
+chapter match: \textsc{match}).}
+\label{tab:qual-d01}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{System} & \textbf{Opening excerpt} \\
+\midrule
+RAG \newline {\scriptsize (5{,}150 chars)} &
+\texttt{Ahla bik! 🎓 Suites réelles --- Convergence d'une suite monotone
+bornée. \newline
+Théorème admis : Toute suite croissante et majorée est convergente
+\ldots}
+\newline
+\textit{Opens with a Derja greeting, correctly identifies the chapter,
+and states the monotone convergence theorem from the retrieved context.
+Proceeds with a structured proof methodology.} \\
+\addlinespace
+Prompt-Only \newline {\scriptsize (7{,}891 chars)} &
+\texttt{Chapitre : Suites Réelles (Chapitre 3) \newline
+Méthode générale pour démontrer la convergence d'une suite monotone
+bornée : \newline
+Étape 1 : Montrer que $(u_n)$ est monotone \ldots}
+\newline
+\textit{Produces the longest answer: comprehensive treatment with explicit
+step-by-step methodology and worked example. No Derja greeting.} \\
+\addlinespace
+Hybrid \newline {\scriptsize (4{,}661 chars)} &
+\texttt{Ahla! Suites réelles --- Théorème de convergence monotone. \newline
+D'après le contexte, le théorème fondamental est \ldots}
+\newline
+\textit{Also identifies the chapter correctly and cites the theorem.
+More concise than Prompt-Only but focused and accurate.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-    \item \textbf{Hybrid} ($d=0.89$, answer length: 4{,}661 chars):
-    The Hybrid engine also correctly identified the chapter and cited the
-    monotone convergence theorem. Operating in Case~A with a correct chapter
-    match, it produced a focused answer.
-\end{itemize}
+\noindent\textbf{Takeaway.}\enspace
+When the retrieval pipeline returns topically relevant content---as it did
+here with a correct chapter match---all three systems produce substantive
+answers. The Prompt-Only system still generated a longer and more
+comprehensive response, but the quality gap was visibly narrower than in
+Example~1. This pattern is consistent with the per-category results in
+Table~\ref{tab:per-category}, where Category~D showed the smallest
+inter-system gap (RAG: 3.50, Hybrid: 4.12, Prompt-Only: 4.38). It suggests
+that corpus coverage, not embedding quality, is the binding constraint:
+when retrieval finds the right chapter, the retrieval-based systems approach
+the performance of the unconstrained baseline.
 
-This is one of the cases where retrieval worked as intended: the chapter
-matched, the retrieved content was topically relevant, and all three systems
-produced substantive answers. The Prompt-Only system still produced a longer
-and more comprehensive response, but the gap in quality was narrower here
-than in the cases where retrieval introduced off-topic context. This is
-consistent with the per-category results in Table~\ref{tab:per-category},
-where Category~D showed the smallest inter-system gap.
+% ·······································································
+\subsubsection{Example~3: Context Mismatch on a Coaching Question
+  (C01 --- Continuité)}
+
+\noindent\textbf{Query:} \textit{``Je comprends pas comment on étudie la
+continuité d'une fonction en un point. C'est quoi la méthode? Donne moi un
+exemple simple svp.''}
+
+\smallskip\noindent
+The student asks for a definition and a simple example of
+\textit{pointwise} continuity. The retrieval pipeline found documents about
+continuity \textit{on intervals}---a related but distinct topic ($d=0.92$,
+chapter match: \textsc{match}, but wrong subtopic).
+
+\begin{table}[H]
+\centering
+\caption{Excerpted openings for query C01 (Continuité, $d=0.92$).}
+\label{tab:qual-c01}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{System} & \textbf{Opening excerpt} \\
+\midrule
+RAG \newline {\scriptsize (3{,}014 chars)} &
+\texttt{Le CONTEXTE fourni contient des exemples de démonstration de la
+continuité de fonctions sur des intervalles \ldots}
+\newline
+\textit{Explicitly acknowledges that the retrieved context addresses
+interval continuity. Adapts this context but never provides the three
+conditions for pointwise continuity that the student asked for.} \\
+\addlinespace
+Prompt-Only \newline {\scriptsize (5{,}019 chars)} &
+\texttt{Chapitre : Fonctions Numériques (Chapitre 2) \newline
+La continuité en un point $a$ : $f$ est continue en $a$ si et seulement si
+$\lim_{x \to a} f(x) = f(a)$ \ldots}
+\newline
+\textit{States the formal definition directly, then works through a
+concrete example ($f(x) = x^2$ at $x = 1$) as the student requested.} \\
+\addlinespace
+Hybrid \newline {\scriptsize (3{,}865 chars)} &
+\texttt{D'après le contexte, nous avons des exemples de continuité de
+fonctions sur un intervalle. Il ne contient pas la définition formelle ni
+la méthode pour un point \ldots}
+\newline
+\textit{Recognizes the mismatch between the retrieved context and the
+question, yet remains constrained by its Case~A instructions to treat the
+context as primary. Provides a partial answer.} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\noindent\textbf{Takeaway.}\enspace
+This example illustrates the subtopic mismatch problem: the retrieval
+distance was reasonable, the chapter was technically correct (both topics
+fall under ``Continuité et limites''), but the retrieved content addressed
+the wrong aspect of continuity. The Prompt-Only system, free to draw on its
+parametric knowledge, directly provided the definition and example the
+student needed. The Hybrid engine's acknowledgment that the context ``ne
+contient pas la définition formelle'' is particularly revealing: the system
+detected the mismatch but could not override its retrieval-first
+instructions in Case~A. This observation motivates the threshold
+recalibration discussed in Section~\ref{sec:future-work}.
+
+\paragraph{Summary of qualitative patterns.}
+Across the three examples, a consistent pattern emerges. The Prompt-Only
+system produces longer, more structured, and more pedagogically complete
+answers by drawing freely on its parametric knowledge. The retrieval-based
+systems (RAG and Hybrid) are constrained by the quality and topical
+relevance of the retrieved context: when retrieval finds the correct chapter
+(Example~2), the gap narrows; when retrieval returns semantically close but
+topically mismatched content (Examples~1 and~3), the constraint actively
+harms output quality. These qualitative observations are consistent with the
+quantitative finding that corpus coverage---not embedding distance---is the
+primary bottleneck.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
