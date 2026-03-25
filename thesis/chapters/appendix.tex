@@ -1,11 +1,4 @@
-% =============================================================================
-%  APPENDIX
-% =============================================================================
-\appendix
-\section*{Appendices}
-\addcontentsline{toc}{section}{Appendices}
-
-% ─────────────────────────────────────────────────────────────────────────────
+\chapter{Appendix}
 \subsection*{Appendix A — Evaluation Questions}
 \addcontentsline{toc}{subsection}{Appendix A — Evaluation Questions}
 \label{app:questions}
@@ -118,9 +111,6 @@ model and the LLM handle mixed-language input. Finally, Category~E contains
 methods that are explicitly outside the Bac program (L'H\^opital,
 diagonalization, Taylor series, Lebesgue integration) — all three systems
 should refuse these.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection*{Appendix B — Grading Rubric and Blind Protocol}
 \addcontentsline{toc}{subsection}{Appendix B — Grading Rubric and Blind Protocol}
 \label{app:rubric}
@@ -212,8 +202,6 @@ mapping changed from one question to the next.}
 \label{fig:blind-sheet-sample}
 \end{figure}
 
-
-% ─────────────────────────────────────────────────────────────────────────────
 \subsection*{Appendix C — Prompt Templates}
 \addcontentsline{toc}{subsection}{Appendix C — Prompt Templates}
 \label{app:prompts}
@@ -223,7 +211,6 @@ French since that is the language of the Tunisian Bac math program. We
 reformatted them slightly to fit the page, but the actual content is
 unchanged. The full source code is available in the repository.
 
-% ·······································································
 \subsubsection*{C.1\quad RAG Engine}
 \label{app:prompt-rag}
 
@@ -278,7 +265,6 @@ INTERDIT:
 - Inventer des resultats non presents dans le CONTEXTE.
 \end{lstlisting}
 
-% ·······································································
 \subsubsection*{C.2\quad Prompt-Only Engine}
 \label{app:prompt-po}
 
@@ -342,7 +328,6 @@ COMPOSANT 10 : CALIBRATION DE CONFIANCE
 Indique : ELEVEE / MOYENNE / FAIBLE avec justification
 \end{lstlisting}
 
-% ·······································································
 \subsubsection*{C.3\quad Hybrid Engine}
 \label{app:prompt-hybrid}
 
@@ -384,4 +369,4 @@ REGLES HYBRIDES:
 As discussed in Section~\ref{subsec:rag-hybrid-discussion}, the evaluation
 ended up routing all 19 queries to Case~A, so Cases~B and~C were never
 actually triggered. This is something we would want to fix with better
-threshold calibration in future work.
+threshold calibration in future work
