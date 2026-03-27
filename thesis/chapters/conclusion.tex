@@ -11,6 +11,7 @@ document collection and digitization to indexing, retrieval, and answer
 generation. Three variants were compared: a RAG system grounded in
 retrieved documents, a prompt-only baseline without retrieval, and a hybrid
 system that adapted its behavior according to retrieval quality.
+
 The blind evaluation showed a result that differed from the initial
 expectation. The prompt-only baseline achieved the highest overall score
 (4.32/5), ahead of both the RAG system (3.22/5) and the hybrid system
@@ -33,19 +34,23 @@ Several directions could extend this work. The most important is corpus
 expansion. A larger and denser collection of past exams, exercise series,
 and corrections would make it more likely that retrieval finds genuinely
 relevant material instead of only approximate matches.
+
 A second direction is broader evaluation. Repeating the blind assessment
 with multiple teachers would make it possible to examine inter-rater
 agreement, while a larger question set would support a more stable
 comparison across categories.
+
 Another important step would be a student study. The current thesis
 evaluates answer quality from the perspective of an expert teacher, but not
 actual learning outcomes. Testing the system with Bac students would help
 determine whether the highest-rated answers also lead to better
 understanding and exam preparation.
+
 On the technical side, it would be useful to explore improved retrieval.
 This could include embedding fine-tuning on Tunisian Bac material, more
 precise retrieval calibration, or alternative ranking strategies designed to
 better distinguish between chapter-level similarity and true topical fit.
+
 Finally, the tutor could be made more interactive. Instead of only
 generating full corrections, a future version could guide the student
 step by step, react to partial attempts, and provide hints before revealing

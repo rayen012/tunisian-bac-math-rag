@@ -90,7 +90,9 @@ tool. The digitized files are then normalized, split into chunks, embedded
 with BGE-M3~\cite{chen2024bge_m3}, and stored in a local ChromaDB
 instance~\cite{chromadb2024}. The final indexed collection contains 624
 source files grouped into 19 chapters or categories and represented by
-1{,}422 chunks.At query time, the retrieval step starts by searching correction-style
+1{,}422 chunks.
+
+At query time, the retrieval step starts by searching correction-style
 documents, since these are the most useful when the goal is to reproduce the
 form and phrasing of Bac solutions. A second pass for course material exists
 as a fallback when correction retrieval is weak. In addition, when a
@@ -107,6 +109,7 @@ relies on prompt-encoded knowledge without retrieval, and the hybrid system
 adapts its behavior according to retrieval confidence. This setup makes the
 comparison between the three approaches more controlled and easier to
 interpret.
+
 \section{RAG System}
 \label{sec:rag-system}
 
@@ -137,7 +140,7 @@ camera provided sufficient quality. For handwritten corrections with dense
 notation or faded ink, the corrections were manually rewritten on a tablet
 (iPad with Apple Pencil) before scanning. This was time-consuming, but
 necessary to improve data quality~\cite{sambasivan2021everyone,
-wang2023ocrbench, mahdavi2019icdar_math}.Each exercise was scanned 
+wang2023ocrbench, mahdavi2019icdar_math}. Each exercise was scanned 
 \textit{together with its correction} as a single
 image or PDF, rather than separating the statement from the solution. Course
 material was scanned as continuous documents for each chapter.
@@ -170,6 +173,7 @@ retrieval target is a complete worked example rather than an isolated
 solution. This is in line with prior work showing that structure-aware
 document processing can improve retrieval
 quality~\cite{zhao2024financial_chunking, chen2024mog}.
+
 \subsection{Mathematical Document Digitization}
 \label{sec:digitization}
 
@@ -204,6 +208,7 @@ of the prompt. The ground-truth evaluation discussed in
 Section~\ref{sec:ocr-evaluation} reported an average CER of 5.4\% and a
 \LaTeX{} math expression accuracy of 97.1\%. This was sufficient for the
 present corpus, but it does not mean the digitization was error-free.
+
 \subsection{Database Construction and Indexing}
 \label{subsec:database-construction}
 
@@ -246,6 +251,7 @@ every change, the indexing pipeline maintains a manifest file
 and content hash. Only files whose content has changed are embedded again.
 In practice, this reduced re-indexing time from minutes to seconds during
 development.
+
 \subsection{Embedding Model Selection}
 \label{subsec:embedding-selection}
 
@@ -276,6 +282,7 @@ $u(n)$ was no longer observed in our tests.
 In the implementation, the embedding model is wrapped as a custom ChromaDB
 \texttt{EmbeddingFunction}. It is loaded once as a singleton, with automatic
 GPU detection when available.
+
 \subsection{RAG Retrieval and Generation Engine}
 \label{subsec:retrieval-engine}
 
@@ -328,6 +335,7 @@ and a confidence label. The confidence level is marked as \textit{fort},
 \textit{moyen}, or \textit{faible} depending on the retrieval result and the
 amount of useful context available. This made it easier to inspect system
 behavior during testing and later analysis.
+
 \subsection{Paired Retrieval of Exercise and Correction}
 \label{subsec:paired-retrieval}
 
@@ -364,6 +372,7 @@ setting is partly bilingual: the source material is mainly in French with
 mathematical notation in \LaTeX{}, while student questions may also contain
 Tunisian Derja. This made multilingual retrieval support important for the
 system.
+
 \section{Prompt-Only Baseline}
 \label{sec:prompt-only}
 
@@ -468,7 +477,7 @@ practical approximation and should not be interpreted as a measure of model reli
 
 The RAG and prompt-only systems represent two opposite strategies. The RAG
 system always tries to use retrieved documents, while the prompt-only system
-never uses retrieval at all. In practice, neither is always better .
+never uses retrieval at all. In practice, neither is always better.
 Recent work on adaptive retrieval has shown that the decision of whether to
 rely on retrieval can matter as much as retrieval itself~\cite{yan2024practical_rag,asai2023self_rag}.
 
@@ -494,7 +503,7 @@ without forcing it to depend entirely on context that may be only partly
 relevant.
 
 If the best distance is above 1.6, the system treats retrieval as too weak
-to be useful (Case~C). In that case,  the engine falls back to the prompt-only strategy.
+to be useful (Case~C). In that case, the engine falls back to the prompt-only strategy.
 
 This routing logic can be seen as a simple approximation of adaptive
 retrieval methods such as CRAG~\cite{yan2024practical_rag}, but with fixed
@@ -516,7 +525,7 @@ the prompt-only baseline.
 \subsection{Relationship to Adaptive Retrieval}
 
 Compared with more advanced adaptive retrieval systems, the hybrid engine is
-deliberately simple.  Its role in this thesis is not
+deliberately simple. Its role in this thesis is not
 to propose a new adaptive retrieval method in general, but to test whether a
 lightweight form of retrieval-aware routing can improve robustness in a
 small, specialized educational corpus.
