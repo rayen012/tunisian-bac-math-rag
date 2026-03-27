@@ -1,43 +1,10 @@
-% =============================================================================
-%  ABSTRACT
-% =============================================================================
-\section*{Abstract}
-\addcontentsline{toc}{section}{Abstract}
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
 
-This thesis presents the design, implementation, and evaluation of a
-Retrieval-Augmented Generation (RAG) system for the Tunisian Baccalaureate
-mathematics examination (Section Math\'{e}matiques). The system combines a
-curated corpus of digitized past examinations, exercise series, and course
-material with a two-stage retrieval mechanism and a large language model to
-produce curriculum-faithful answers that follow the official Tunisian
-correction style.
+This thesis presents the design, implementation, and evaluation of an AI tutor for the Tunisian Baccalaureate mathematics examination (Section Math\'{e}matiques), with a particular focus on Retrieval-Augmented Generation (RAG). The system combines a curated corpus of digitized past examinations, exercise series, and course material with a two-stage retrieval pipeline and a large language model to generate answers intended to remain faithful to the curriculum and to the style of official Bac corrections.
 
-We built and compared three approaches: (1)~a RAG system that grounds every
-answer in retrieved documents, (2)~a prompt-only baseline that encodes the
-entire Bac syllabus into the system prompt without any retrieval, and (3)~a
-hybrid engine that dynamically routes queries between RAG and prompt-only
-mode based on retrieval confidence. All three systems share the same
-generative model (Gemini 2.5 Flash), the same persona (``Monsieur Tounsi''),
-and the same output format, so the only variable is the source of domain
-knowledge.
+Three approaches were implemented and compared: (1)~a RAG system that grounds answers in retrieved documents, (2)~a prompt-only baseline that relies on the model's internal knowledge without retrieval, and (3)~a hybrid system that adapts its behavior based on retrieval confidence. All three systems use the same underlying generative model, the same persona (``Monsieur Tounsi''), and the same answer format, so the main experimental difference is how domain knowledge is supplied at inference time.
 
-A blind evaluation by a Tunisian Bac mathematics teacher, scoring anonymized
-outputs across 15 questions on four criteria (mathematical correctness,
-reasoning clarity, pedagogical quality, Bac style adherence), produced a
-surprising result: the Prompt-Only baseline (mean 4.32/5) outperformed both
-the RAG system (3.22/5) and the Hybrid engine (3.25/5) on every criterion.
-All three systems correctly refused all four out-of-scope guardrail tests.
-A ground truth evaluation of the digitization pipeline confirmed an average
-Character Error Rate of 5.4\% and a \LaTeX{} math expression accuracy of
-97.1\%.
+A blind evaluation was conducted by a Tunisian Bac mathematics teacher on 15 questions. The anonymized outputs were graded on four criteria: mathematical correctness, reasoning clarity, pedagogical quality, and adherence to Bac style. The results showed that the prompt-only baseline (mean 4.32/5) outperformed both the RAG system (3.22/5) and the hybrid system (3.25/5). All three systems also correctly refused all four out-of-scope guardrail questions. In addition, a small ground-truth evaluation of the digitization pipeline reported an average Character Error Rate of 5.4\% and a \LaTeX{} math expression accuracy of 97.1\%. Retrieval analysis helps explain these findings. Although retrieval distances were consistently low, chapter-level relevance was correct in only 9 of 15 analyzed queries, showing that low embedding distance did not always correspond to topically appropriate context. This suggests that, in the current setup, retrieval sometimes introduced misaligned material rather than improving the answer. By contrast, the prompt-only system benefited from the strong parametric knowledge of the underlying model. More broadly, the results indicate that retrieval is not automatically beneficial in small, specialized educational corpora, even when the retrieval metrics appear strong.
 
-The main explanation is that a state-of-the-art LLM already possesses
-sufficient parametric knowledge of standard Bac-level mathematics, and that
-the current corpus (1{,}422 chunks from 624 files) is too small for
-retrieval to consistently outperform what the model already knows. With a
-substantially larger corpus, this balance could shift in favor of retrieval.
-The thesis contributes the first digitized corpus of Tunisian Bac
-mathematics materials, a domain-specific RAG architecture with paired
-exercise--correction retrieval, and an empirical comparison showing that
-prompt engineering can outperform retrieval when the generative model is
-strong and the corpus is limited.
+The thesis contributes a digitized corpus of Tunisian Bac mathematics materials, a domain-specific retrieval architecture with paired exercise--correction retrieval, and an empirical comparison of prompt-only, RAG, and hybrid approaches in a real educational setting. The findings show that careful prompt design can outperform retrieval-based grounding when the base model is strong, retrieval relevance remains imperfect, and the corpus is limited.
