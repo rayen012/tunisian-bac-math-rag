@@ -1,162 +1,165 @@
-% =============================================================================
-%  CHAPTER 2 — BACKGROUND & RELATED WORK
-% =============================================================================
-\section{Background and Related Work}
-\label{sec:background}
+\chapter{Background }
+\label{Chap:background}
 
-This chapter goes over the main ideas behind the system we built. We cover language models, embeddings, retrieval-augmented generation, prompt engineering, hybrid architectures, vector databases, OCR for math, and AI in education.
+This chapter introduces the main concepts behind the system: large language
+models, text embeddings, retrieval-augmented generation, vector databases,
+mathematical OCR, and AI in education.
 
+\section{Large Language Models}
+\label{sec:llm-background}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Large Language Models}
-\label{subsec:llm-background}
+Modern large language models are built on the Transformer architecture
+introduced by Vaswani et al.~\cite{vaswani2017attention}. Before a
+Transformer can process text, the input is split into small units called
+\textit{tokens}, which are usually words or parts of words. Each token is
+then mapped to a dense numerical vector called an \textit{embedding}. These
+embeddings give the model a continuous representation of the input that can
+be processed mathematically.
 
-\subsubsection{Transformer Architecture}
-
-Most modern language models rely on the Transformer, proposed by Vaswani et al.~\cite{vaswani2017attention}. Before a Transformer can process text, the input is split into small units called \textit{tokens} --- typically words or subwords. Each token is then mapped to a dense numerical vector called an \textit{embedding}, which gives the model a continuous representation of the input that it can compute with.
-
-The key idea of the Transformer is \textit{self-attention}: instead of reading tokens one by one like older recurrent networks, a Transformer looks at all tokens in the sequence at once and learns which ones are related to each other. Formally, the attention mechanism is computed as:
+Unlike recurrent models, Transformers process tokens in parallel and use
+self-attention to model relationships across the whole input sequence. The
+attention mechanism is defined as:
 
 \begin{equation}
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V
 \label{eq:attention}
 \end{equation}
 
-Here, the input embeddings are projected into three matrices: queries $Q$ (what each token is looking for), keys $K$ (what each token offers), and values $V$ (the actual information to pass along). The dot product $QK^T$ measures how relevant each pair of tokens is to each other, $d_k$ is the key dimension used for numerical stability, and the softmax turns the scores into weights that sum to one. The result is a weighted combination of values, where each token's output is influenced most by the tokens it attends to. Multi-head attention repeats this with different learned projections so the model can pick up on different kinds of relationships in the same sequence.
+where the input embeddings are projected into three matrices: queries $Q$,
+keys $K$, and values $V$. Intuitively, queries represent what a token is
+looking for, keys represent what each token offers, and values contain the
+information to be passed on. The dot product $QK^T$ measures how strongly
+tokens relate to one another, $d_k$ is the key dimension used for scaling,
+and the softmax converts the scores into weights. The result is a weighted
+combination of values, so that each token is influenced more by the tokens
+it attends to most strongly. Multi-head attention repeats this process with
+different learned projections, which helps the model capture different kinds
+of dependencies in the same sequence.
 
-\subsubsection{Encoder vs.\ Decoder Models}
+Transformer models later developed in two main directions. Encoder-only
+models such as BERT~\cite{devlin2019bert} are mainly used for understanding
+tasks and are also important for embedding-based retrieval. Decoder-only
+models such as GPT-3~\cite{brown2020gpt3}, LLaMA~\cite{touvron2023llama},
+and Gemini~\cite{team2023gemini} are trained autoregressively and are
+designed for text generation. These generative models form the basis of
+modern chatbots and are used in this thesis for answer generation.
 
-There are two main flavours of Transformer models. Encoder-only models like BERT~\cite{devlin2019bert} are trained by masking words and predicting them, which makes them good at understanding text and computing embeddings. Decoder-only models like GPT-3~\cite{brown2020gpt3}, LLaMA~\cite{touvron2023llama}, and Gemini~\cite{team2023gemini} are trained to predict the next word, which makes them good at generating text.
+As these models grew larger, they developed strong instruction-following and
+in-context reasoning abilities~\cite{brown2020gpt3}. At the same time, they
+can still produce convincing but incorrect answers, a phenomenon commonly
+described as hallucination~\cite{ji2023hallucination_survey}. In an
+educational setting, this is a serious limitation because students may trust
+an explanation even when it is wrong.
 
-As these models grew bigger, they gained surprising abilities: following instructions, learning from a few examples in the prompt, and reasoning step by step~\cite{brown2020gpt3}. But they also hallucinate, meaning they sometimes produce answers that sound right but are factually wrong~\cite{ji2023hallucination_survey}. In education this is a real problem because a student might trust a confident-sounding but incorrect explanation.
+In this thesis, Gemini~\cite{team2023gemini} is used both for document
+digitization and for answer generation. This makes it possible to rely on
+the same model family for the main stages of the system while keeping the
+deployment pipeline on Vertex AI relatively simple.
 
-\subsubsection{Gemini}
+\section{Text Embeddings and Semantic Similarity}
+\label{sec:embeddings-background}
 
-Gemini is Google's multimodal model family~\cite{team2023gemini}. We use it for two things in this thesis. First, for digitization: its vision capabilities let us convert scanned math documents into \LaTeX{}. Second, for answer generation: it powers all three system variants (prompt-only, RAG, and hybrid). Using the same model for both tasks was mainly a practical choice that kept the implementation simpler on Vertex AI.
+Text embeddings represent variable-length text as fixed-dimensional vectors.
+The basic idea is that semantically similar texts should be mapped to nearby
+points in vector space. Sentence-BERT~\cite{reimers2019sentence_bert}
+showed that this approach is effective for retrieval tasks and made neural
+similarity search practical at scale.For this work, BGE-M3~\cite{chen2024bge_m3} 
+was selected because it is multilingual, supports relatively long inputs, and can be run locally. This
+was useful in our setting because the corpus contains mainly French material
+with some Arabic content, and because local embeddings fit well with the
+goal of keeping the retrieval pipeline fully controlled.
+Mathematical retrieval remains difficult. Unlike plain text, formulas carry
+meaning through structure, such as fractions, indices, and exponents.
+Several works have explored math-specific embedding approaches~\cite{mansouri2019tangent,pfahler2020math_embeddings},
+but these are less suited to a corpus that mixes natural language and formal
+notation. In this thesis, the practical solution was to digitize documents
+into \LaTeX{} before embedding them. This does not remove all ambiguity, but
+it provides a consistent textual representation that works reasonably well
+with general-purpose embedding models.
 
+\section{Retrieval-Augmented Generation}
+\label{sec:rag-background}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Text Embeddings and Semantic Similarity}
-\label{subsec:embeddings-background}
+RAG, introduced by Lewis et al.~\cite{lewis2020rag}, tackles a basic
+limitation of language models: their knowledge is fixed at training time. A
+RAG system adds a retrieval step that pulls relevant documents from an
+external source before generating an answer.
 
-Text embeddings turn a piece of text into a vector of numbers. The idea is that texts with similar meaning end up close together in vector space. Early methods like Word2Vec worked at the word level, but Sentence-BERT~\cite{reimers2019sentence_bert} showed that BERT can be fine-tuned to produce useful sentence-level embeddings where cosine similarity actually reflects how related two texts are. This made embedding-based retrieval practical.
+The standard pipeline works in three stages. First, during
+\textit{indexing}, the source documents are split into smaller pieces called
+\textit{chunks}. Each chunk is passed through an embedding model that
+converts it into a numerical vector. These vectors are then stored in a
+vector database together with the original text and any metadata. Second,
+during \textit{retrieval}, a user query is embedded with the same model, and
+the system searches the vector database for the $k$ chunks whose vectors are
+closest to the query vector. Sparse methods such as
+BM25~\cite{robertson2009bm25} rely on lexical overlap and are easy to
+interpret, while dense methods such as
+DPR~\cite{karpukhin2020dpr} retrieve by embedding similarity and can capture
+semantic relations beyond exact word matches. Third, during
+\textit{generation}, the retrieved chunks are combined with the original
+question and passed to the language model, which produces an answer grounded
+in the retrieved context rather than relying only on its parametric
+knowledge.
 
-\subsubsection{BGE-M3}
+For our use case, this is attractive because we want the model to answer on
+the basis of real Tunisian Bac materials, not only on general mathematical
+knowledge. Chunking is also important. If chunks are too small, relevant
+context may be lost; if they are too large, retrieval can become noisy.
+Prior work has shown that structure-aware chunking is often preferable to
+arbitrary splitting~\cite{zhao2024financial_chunking,chen2024mog}. Following
+this idea, the present system uses adaptive chunking, with smaller chunks
+for corrections and larger chunks for course material.
 
-For our retrieval pipeline we chose BGE-M3~\cite{chen2024bge_m3}. Three properties made it a good fit. First, it is multilingual and covers French and Arabic, both of which appear in Tunisian Bac materials. Second, it handles long inputs (up to 8192 tokens), so we can embed full exercise--correction pairs without cutting them off. Third, it is open-source and runs locally, which avoids API costs and keeps things reproducible. Although the model also supports sparse and ColBERT-style retrieval, we only use its dense embeddings.
+Many extensions of RAG have been proposed, including
+RETRO~\cite{borgeaud2022retro}, Atlas~\cite{izacard2022atlas}, and more
+recent retrieval-control methods. The hybrid system studied in this thesis
+is simpler. It uses retrieval signals to decide whether to rely more on
+retrieved context or on the model's internal knowledge.
+\section{Vector Databases}
+\label{sec:vector-db-background}
 
-\subsubsection{Challenges of Mathematical Embeddings}
+A vector database stores embeddings and supports similarity search in
+high-dimensional space. Popular options include
+FAISS~\cite{johnson2019faiss}, Pinecone, Weaviate, and
+ChromaDB~\cite{chromadb2024}. In this project, ChromaDB was chosen because
+it works locally, supports persistent storage, and allows metadata-based
+filtering. These features fit the needs of the tutoring system, where
+retrieval often depends not only on similarity scores but also on document
+attributes such as chapter or source type.
 
-Math formulas carry meaning through their structure---fractions, exponents, subscripts---and that structure gets lost when you flatten everything into a line of text. Some researchers have tried building embeddings specifically for math~\cite{mansouri2019tangent, pfahler2020math_embeddings}, but those approaches are hard to apply to a corpus like ours that mixes natural language with formulas.
+\section{OCR and Mathematical Document Processing}
+\label{sec:ocr-background}
 
-Our workaround is simple: we convert all math into \LaTeX{} before embedding. For example, $\frac{a}{b}$ becomes \texttt{\textbackslash frac\{a\}\{b\}}, which gives a general-purpose model something consistent to work with. It is not perfect, but combined with metadata filtering (chapter, document type) it works well enough in practice.
+Converting scanned mathematics documents into machine-readable text is a
+difficult problem~\cite{zanibbi2016math_retrieval}. Standard OCR tools often
+struggle with formulas because mathematical notation is inherently
+two-dimensional. Fractions, superscripts, subscripts, and aligned
+expressions cannot always be recovered reliably from plain text extraction.
+Specialized tools such as Mathpix~\cite{mathpix2024} have been developed for
+this purpose. More recently, multimodal models have also shown promising
+results on OCR tasks involving mathematical content~\cite{wang2023ocrbench,mahdavi2019icdar_math}.
+In this thesis, Gemini's vision capabilities are used to digitize scanned
+documents into \LaTeX{}, since the source material often combines French
+text, formulas, and handwritten annotations in the same page.
 
+\section{AI in Mathematics Education}
+\label{sec:ai-education}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Retrieval-Augmented Generation}
-\label{subsec:rag-background}
+The use of AI in education has grown quickly with the spread of capable
+LLMs~\cite{kasneci2023chatgpt_education}. General-purpose systems such as
+ChatGPT, Gemini, and Claude can often solve mathematics problems, but they
+are not designed around a specific school curriculum. By contrast, tools
+such as Wolfram Alpha or Photomath are strong on computation and symbolic
+steps, yet they do not address curriculum-specific correction style or exam
+expectations. Some educational systems, such as Khan Academy's Khanmigo,
+move closer to structured tutoring, but they are built for different
+linguistic and curricular settings.
+For Tunisian Bac mathematics, the problem is more specific. Students need
+answers that are not only mathematically correct, but also aligned with the
+official program and the style expected in correction. To the best of our
+knowledge, this combination has not been studied before in a system grounded
+in actual Tunisian Bac materials. This thesis is therefore positioned at the
+intersection of RAG, mathematical document processing, and curriculum-aware
+AI tutoring.
 
-\subsubsection{Core Idea}
-
-RAG, introduced by Lewis et al.~\cite{lewis2020rag}, tackles a basic limitation of language models: their knowledge is frozen at training time. A RAG system adds a retrieval step that pulls relevant documents from an external source before generating an answer. The standard pipeline works in three stages:
-
-\begin{enumerate}
-    \item \textbf{Indexing}: the source documents are split into smaller
-    pieces called \textit{chunks}. Each chunk is then passed through an
-    embedding model that converts it into a numerical vector. These
-    vectors are stored in a vector database (such as ChromaDB or FAISS)
-    along with the original text and any metadata. This step is done
-    offline, before any user queries arrive.
-    \item \textbf{Retrieval}: when a user asks a question, the query is
-    embedded using the same model. The system then searches the vector
-    database for the $k$ chunks whose vectors are closest to the query
-    vector, typically using a distance metric like L2 (Euclidean)
-    distance. The closer two vectors are, the more semantically similar
-    the texts are assumed to be.
-    \item \textbf{Generation}: the retrieved chunks are concatenated with
-    the original query into a single prompt, which is then passed to the
-    language model. The model generates an answer grounded in the
-    retrieved context rather than relying solely on its parametric
-    knowledge.
-\end{enumerate}
-
-For our use case this is attractive because we want the model to answer based on real Tunisian Bac materials, not just its general knowledge.
-
-\subsubsection{Retrieval Methods}
-
-There are two main approaches. Sparse methods like BM25~\cite{robertson2009bm25} match based on shared words---fast and easy to understand, but limited when the query and the document use different wording. Dense methods like DPR~\cite{karpukhin2020dpr} encode everything into vectors and search by nearest-neighbour, which captures meaning better but depends on having a good embedding model. We use dense retrieval with BGE-M3, plus metadata filtering as an additional signal.
-
-\subsubsection{Chunking Strategies}
-
-How you split documents matters a lot. Chunks that are too small lose context; chunks that are too big dilute the useful information. Zhao et al.~\cite{zhao2024financial_chunking} showed that respecting natural document boundaries beats arbitrary splitting, and Chen et al.~\cite{chen2024mog} found that mixing different chunk sizes helps for diverse collections.
-
-We use adaptive chunking: 1500-character chunks for corrections (to keep individual exercises self-contained) and 3000-character chunks for course material (to keep theorems together with their explanations).
-
-\subsubsection{Advanced RAG Architectures}
-
-Since the original RAG paper, many extensions have appeared~\cite{gao2024rag_survey}. RETRO~\cite{borgeaud2022retro} integrates retrieval into pre-training, Atlas~\cite{izacard2022atlas} jointly trains the retriever and generator, and Self-RAG~\cite{asai2023self_rag} lets the model decide when retrieval is even needed. Our hybrid engine is much simpler: it just routes queries based on retrieval confidence, which we describe later.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Prompt Engineering}
-\label{subsec:prompt-engineering}
-
-Prompt engineering is about designing the input you give to a language model so it produces the kind of output you want. Unlike fine-tuning, it does not change the model itself---everything happens at inference time, which makes it cheap and fast to iterate~\cite{white2023prompt_patterns}.
-
-\subsubsection{Prompting Strategies}
-
-The simplest approach is zero-shot prompting: just describe the task. Few-shot prompting adds a handful of examples before the actual question, and Brown et al.~\cite{brown2020gpt3} showed this can dramatically improve results without any training. For reasoning tasks, chain-of-thought prompting asks the model to show its work step by step. Kojima et al.~\cite{kojima2022zero_shot_cot} found that even adding ``Let's think step by step'' helps, and Wei et al.~\cite{wei2022chain_of_thought} formalized this into a proper technique. Instruction-tuned models like InstructGPT~\cite{ouyang2022instructgpt} take this further by being specifically trained to follow natural-language instructions.
-
-\subsubsection{Prompting for Math}
-
-Math prompting is trickier than general text generation. A good math answer needs correct notation, logical order, and the right level of detail~\cite{imani2023mathprompter}. In the Tunisian Bac context, this means formal French mathematical phrasing, explicit logical connectors, and staying within the syllabus. We design our prompts manually rather than using automatic methods like APE~\cite{zhou2023ape}, because the target style is very specific.
-
-\subsubsection{Prompts in RAG Systems}
-
-In a RAG system, the prompt has to do double duty: tell the model what to answer \emph{and} how to use the retrieved documents~\cite{gao2024rag_survey}. In our prompt-only baseline, the prompt carries the full burden of enforcing style. In the RAG and hybrid systems, it also has to organize the interaction between the question and the retrieved material.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Hybrid AI Architectures}
-\label{subsec:hybrid-background}
-
-By hybrid we mean a system that does not use the same strategy for every query. It combines retrieval-based and prompt-based generation and picks between them depending on how good the retrieved evidence is.
-
-\subsubsection{Hybrid Retrieval}
-
-The term hybrid retrieval usually refers to mixing sparse and dense methods~\cite{lin2021hybrid_retrieval}. Lin et al.\ showed that combining both often beats either alone. Our system is not a classic sparse+dense setup---retrieval stays dense---but we do use structured metadata (chapter, document type) alongside semantic similarity, so retrieval is not purely embedding-based.
-
-\subsubsection{Adaptive Generation}
-
-Some systems go further and let the model decide whether retrieval is even worth using. Self-RAG~\cite{asai2023self_rag} has the model reflect on whether the retrieved passages are relevant, and Jiang et al.~\cite{jiang2023active_rag} explore routing queries away from retrieval entirely when it is unlikely to help. These are more complex than what we do, but they share the same intuition: retrieval helps when it finds good matches, and hurts when it does not.
-
-\subsubsection{Confidence-Based Routing}
-
-Our hybrid engine follows a simple version of this idea. It tries retrieval first, then checks how good the results are using distance scores. If the match is strong, it works like a normal RAG system. If the match is mediocre, it blends retrieved material with prompt-based guidance. If the match is poor, it falls back to prompt-only generation. This came from a practical observation during development: forcing weak retrievals into the prompt often made answers worse, not better. The routing is related to broader work on when LLMs should trust their own knowledge versus external sources~\cite{mallen2023trust_llm}.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Vector Databases}
-\label{subsec:vector-db-background}
-
-Vector databases are built for similarity search over high-dimensional vectors. Unlike regular databases that do exact matching, they find nearest neighbours in embedding space. Options include FAISS~\cite{johnson2019faiss}, Pinecone, Weaviate, and ChromaDB~\cite{chromadb2024}.
-
-We went with ChromaDB because it runs locally (no external service needed), supports metadata filtering (important since we filter by chapter and document type), has a clean Python API, and lets us plug in our own embedding model.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{OCR and Mathematical Document Processing}
-\label{subsec:ocr-background}
-
-Turning scanned math documents into machine-readable text is hard~\cite{zanibbi2016math_retrieval}. Standard OCR systems struggle with formulas because math is two-dimensional: fractions stack vertically, subscripts sit below, integral bounds span multiple lines. Specialized tools like Mathpix~\cite{mathpix2024} handle this better, and recently multimodal models have also shown good results~\cite{wang2023ocrbench, mahdavi2019icdar_math}.
-
-We use Gemini's vision capabilities because our documents mix French text, math formulas, and sometimes handwritten annotations---handling all of that in one pass is simpler than chaining multiple specialized tools.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{AI in Mathematics Education}
-\label{subsec:ai-education}
-
-AI tools for math education have grown rapidly~\cite{kasneci2023chatgpt_education}. General chatbots (ChatGPT, Gemini, Claude) can solve problems but are not tied to any particular curriculum. Math tools (Wolfram Alpha, Photomath) are precise but ignore pedagogical context. Curriculum-aware platforms like Khan Academy's Khanmigo try to ground AI in educational frameworks, but they target English-speaking students.
-
-As far as we know, no existing work combines the Tunisian Bac math curriculum, French-language correction conventions, and a RAG system built on real exam materials. That is the gap this thesis addresses.
