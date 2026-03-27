@@ -13,6 +13,10 @@ results.
 
 \subsubsection{Corpus Statistics}
 
+Table~\ref{tab:corpus-stats} summarizes the corpus after digitization and
+indexing. The 624 source \LaTeX{} files were split into 903 chunks stored
+in ChromaDB.
+
 \begin{table}[H]
 \centering
 \caption{Corpus statistics after digitization and indexing.}
@@ -29,16 +33,18 @@ Total chunks in ChromaDB           & 903 \\
 
 \subsubsection{Environment}
 
-\begin{itemize}
-    \item \textbf{Platform}: Google Cloud Vertex AI Workbench
-    \item \textbf{Python}: 3.10
-    \item \textbf{Embedding model}: BGE-M3 (\texttt{BAAI/bge-m3}), CPU,
-    FP32, 1024-dim, max 8192 tokens
-    \item \textbf{Generation model}: Gemini 2.5 Flash via Vertex AI
-    \item \textbf{Vector database}: ChromaDB (local persistent storage)
-\end{itemize}
+All experiments were conducted on Google Cloud Vertex AI Workbench
+running Python~3.10. The embedding model was BGE-M3
+(\texttt{BAAI/bge-m3}), executed on CPU in FP32 mode, producing
+1024-dimensional vectors with a maximum input length of 8192 tokens.
+Answer generation used Gemini~2.5 Flash via Vertex AI. The vector
+database was ChromaDB with local persistent storage, hosted on the same
+Workbench instance to minimize retrieval latency.
 
 \subsubsection{Hyperparameters}
+
+Table~\ref{tab:hyperparameters} lists the key system parameters used
+across all experiments.
 
 \begin{table}[H]
 \centering
@@ -137,6 +143,9 @@ Interpretation is deferred to Section~\ref{sec:discussion}.
 
 \subsubsection{Overall System Comparison}
 
+Table~\ref{tab:human-evaluation} presents the blind human evaluation
+results averaged across the 15 graded questions (Categories A--D).
+
 \begin{table}[H]
 \centering
 \caption{Blind human evaluation: average scores (0--5) across 15 questions.}
@@ -162,6 +171,9 @@ weakest criterion across all systems.
 
 \subsubsection{Per-Category Breakdown}
 
+Table~\ref{tab:per-category} breaks down the mean scores by question
+category.
+
 \begin{table}[H]
 \centering
 \caption{Per-category mean scores (average of four criteria, 0--5).}
@@ -185,6 +197,13 @@ was the only category where the Hybrid engine clearly outperformed RAG
 
 \subsubsection{Curriculum Guardrail Results}
 
+We tested all three systems with four out-of-scope questions (Category~E)
+that ask for methods not part of the Tunisian Bac program: L'H\^opital's
+rule, matrix diagonalization, Taylor series, and Lebesgue integration.
+Table~\ref{tab:guardrail-results} shows that all three systems correctly
+refused all four requests, either by redirecting to the Bac-compatible
+method or by explicitly stating that the topic is outside the curriculum.
+
 \begin{table}[H]
 \centering
 \caption{Out-of-scope questions correctly refused (out of 4).}
@@ -200,7 +219,8 @@ Hybrid      & 4/4 \\
 \end{tabular}
 \end{table}
 
-All three systems correctly refused all four out-of-scope requests.
+This result indicates that the syllabus guard component in the system
+prompt is effective regardless of whether retrieved context is present.
 
 
 % ─────────────────────────────────────────────────────────────────────────────

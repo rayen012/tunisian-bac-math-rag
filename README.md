@@ -118,6 +118,28 @@ streamlit run app_prompt_only.py --server.port 8502
 streamlit run app_hybrid.py --server.port 8503
 ```
 
+### Step 4: Run evaluation experiments
+
+```bash
+# Run all three engines on the 20-question evaluation bank
+python evaluation/run_evaluation.py
+
+# Generate blind grading sheets for the teacher
+python evaluation/generate_grading_sheets.py
+
+# Analyze teacher grades (after grading is complete)
+python evaluation/analyze_grades.py
+
+# Compare BGE-M3 vs Google embeddings
+python evaluation/embedding_comparison.py
+
+# Variable-name sensitivity probe
+python evaluation/variable_sensitivity_probe.py
+
+# OCR quality evaluation
+python evaluation/ocr_ground_truth_eval.py
+```
+
 ### Configuration
 
 All configuration is in `config.py`. Key settings:
@@ -146,6 +168,14 @@ All configuration is in `config.py`. Key settings:
 | `chat_rag.py` | Minimal chat interface for RAG engine (use in Jupyter) |
 | `chat_prompt_only.py` | Minimal chat interface for Prompt-Only engine (use in Jupyter) |
 | `chat_hybrid.py` | Minimal chat interface for Hybrid engine (use in Jupyter) |
+| **Evaluation Scripts** | |
+| `evaluation/eval_questions.py` | 20-question evaluation bank (5 categories A-E) |
+| `evaluation/run_evaluation.py` | Run all three engines on the question bank |
+| `evaluation/generate_grading_sheets.py` | Generate blind evaluation sheets for human grading |
+| `evaluation/analyze_grades.py` | Parse teacher grades and compute per-system/per-category scores |
+| `evaluation/embedding_comparison.py` | Compare BGE-M3 vs Google text-embedding-005 retrieval |
+| `evaluation/variable_sensitivity_probe.py` | Test embedding robustness to variable name changes (u_n vs v_n) |
+| `evaluation/ocr_ground_truth_eval.py` | Evaluate OCR quality (CER, WER, LaTeX accuracy) |
 | **Evaluation Notebooks** | |
 | `test_rag.ipynb` | Scientific validation of the RAG pipeline (retrieval, generation, timing) |
 | `test_prompt_only.ipynb` | Comparative evaluation: RAG vs Prompt-Only |

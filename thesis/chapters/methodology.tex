@@ -14,11 +14,14 @@ architecture.
 \subsection{System Overview}
 \label{subsec:system-overview}
 
-The system follows the canonical RAG architecture~\cite{lewis2020rag}: a
-retrieval component supplies relevant documents to a generative model at
-inference time, grounding its outputs in verifiable
-sources~\cite{gao2024rag_survey}. Our implementation is a five-stage
-pipeline tailored to the Tunisian Bac domain.
+We developed three system variants that share the same generative model
+and output format but differ in how they construct the context given to
+the model. Two of the three (RAG and Hybrid) follow the
+retrieval-augmented generation paradigm~\cite{lewis2020rag}, while the
+third (Prompt-Only) relies entirely on prompt engineering. The shared
+infrastructure is organized as a five-stage pipeline tailored to the
+Tunisian Bac domain; the retrieval and generation stages are where the
+three variants diverge.
 Figure~\ref{fig:system-architecture} shows the complete pipeline.
 
 % ── Pipeline diagram (TikZ) ─────────────────────────────────────────────────
@@ -180,9 +183,14 @@ The system prompt has ten functional components, following the principle of
 prompt patterns~\cite{white2023prompt_patterns}:
 
 \begin{description}
-    \item[Component~1: Persona.] ``Monsieur Tounsi,'' a veteran teacher with
-    20+ years of Bac preparation. Role-based prompts improve task
-    adherence~\cite{white2023prompt_patterns}.
+    \item[Component~1: Persona.] ``Monsieur Tounsi,'' a fictional veteran
+    Tunisian mathematics teacher with 20+ years of Bac preparation
+    experience. The persona is defined with specific traits: he speaks
+    formal French for mathematical content but uses Tunisian Derja for
+    encouragement and motivation (what we call the ``Derja sandwich''
+    style), he follows the official correction methodology strictly, and
+    he never uses methods outside the Bac syllabus. Role-based prompts
+    improve task adherence~\cite{white2023prompt_patterns}.
 
     \item[Component~2: Curriculum inventory.] All ten chapters with their
     specific topics. This is the core knowledge component---without retrieval,

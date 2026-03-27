@@ -13,20 +13,22 @@ This chapter goes over the main ideas behind the system we built. We cover langu
 
 \subsubsection{Transformer Architecture}
 
-Most modern language models rely on the Transformer, proposed by Vaswani et al.~\cite{vaswani2017attention}. The key idea is self-attention: instead of reading words one by one like older recurrent networks, a Transformer looks at all words at once and figures out which ones are related. The attention formula is:
+Most modern language models rely on the Transformer, proposed by Vaswani et al.~\cite{vaswani2017attention}. Before a Transformer can process text, the input is split into small units called \textit{tokens} --- typically words or subwords. Each token is then mapped to a dense numerical vector called an \textit{embedding}, which gives the model a continuous representation of the input that it can compute with.
+
+The key idea of the Transformer is \textit{self-attention}: instead of reading tokens one by one like older recurrent networks, a Transformer looks at all tokens in the sequence at once and learns which ones are related to each other. Formally, the attention mechanism is computed as:
 
 \begin{equation}
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right) V
 \label{eq:attention}
 \end{equation}
 
-Here $Q$, $K$, $V$ are the query, key, and value matrices, and $d_k$ is the key dimension. Multi-head attention repeats this with different learned projections so the model can pick up on different kinds of relationships in the same sentence.
+Here, the input embeddings are projected into three matrices: queries $Q$ (what each token is looking for), keys $K$ (what each token offers), and values $V$ (the actual information to pass along). The dot product $QK^T$ measures how relevant each pair of tokens is to each other, $d_k$ is the key dimension used for numerical stability, and the softmax turns the scores into weights that sum to one. The result is a weighted combination of values, where each token's output is influenced most by the tokens it attends to. Multi-head attention repeats this with different learned projections so the model can pick up on different kinds of relationships in the same sequence.
 
 \subsubsection{Encoder vs.\ Decoder Models}
 
 There are two main flavours of Transformer models. Encoder-only models like BERT~\cite{devlin2019bert} are trained by masking words and predicting them, which makes them good at understanding text and computing embeddings. Decoder-only models like GPT-3~\cite{brown2020gpt3}, LLaMA~\cite{touvron2023llama}, and Gemini~\cite{team2023gemini} are trained to predict the next word, which makes them good at generating text.
 
-As these models grew bigger, they gained surprising abilities: following instructions, learning from a few examples in the prompt, and reasoning step by step~\cite{brown2020gpt3}. But they also hallucinate, meaning they sometimes produce answers that sound right but are factually wrong. In education this is a real problem because a student might trust a confident-sounding but incorrect explanation.
+As these models grew bigger, they gained surprising abilities: following instructions, learning from a few examples in the prompt, and reasoning step by step~\cite{brown2020gpt3}. But they also hallucinate, meaning they sometimes produce answers that sound right but are factually wrong~\cite{ji2023hallucination_survey}. In education this is a real problem because a student might trust a confident-sounding but incorrect explanation.
 
 \subsubsection{Gemini}
 
@@ -59,9 +61,23 @@ Our workaround is simple: we convert all math into \LaTeX{} before embedding. Fo
 RAG, introduced by Lewis et al.~\cite{lewis2020rag}, tackles a basic limitation of language models: their knowledge is frozen at training time. A RAG system adds a retrieval step that pulls relevant documents from an external source before generating an answer. The standard pipeline works in three stages:
 
 \begin{enumerate}
-    \item \textbf{Indexing}: split documents into chunks, compute embeddings, store them in a vector database.
-    \item \textbf{Retrieval}: given a query, find the $k$ most similar chunks by comparing embeddings.
-    \item \textbf{Generation}: feed the retrieved chunks together with the query to the language model.
+    \item \textbf{Indexing}: the source documents are split into smaller
+    pieces called \textit{chunks}. Each chunk is then passed through an
+    embedding model that converts it into a numerical vector. These
+    vectors are stored in a vector database (such as ChromaDB or FAISS)
+    along with the original text and any metadata. This step is done
+    offline, before any user queries arrive.
+    \item \textbf{Retrieval}: when a user asks a question, the query is
+    embedded using the same model. The system then searches the vector
+    database for the $k$ chunks whose vectors are closest to the query
+    vector, typically using a distance metric like L2 (Euclidean)
+    distance. The closer two vectors are, the more semantically similar
+    the texts are assumed to be.
+    \item \textbf{Generation}: the retrieved chunks are concatenated with
+    the original query into a single prompt, which is then passed to the
+    language model. The model generates an answer grounded in the
+    retrieved context rather than relying solely on its parametric
+    knowledge.
 \end{enumerate}
 
 For our use case this is attractive because we want the model to answer based on real Tunisian Bac materials, not just its general knowledge.
