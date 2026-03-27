@@ -1,108 +1,16 @@
-% =============================================================================
-%  CHAPTER 1 — INTRODUCTION
-% =============================================================================
-\section{Introduction}
-\label{sec:introduction}
+\chapter{Introduction}
+\label{chap:introduction}
 
-\subsection{Motivation}
-\label{subsec:motivation}
+\section{Motivation}
+In Tunisia, the Baccalaureate examination is more than a school exam. It is a major academic and social milestone that strongly influences university access and future opportunities. Because of its importance, many students rely on private tutoring to prepare effectively. This has created a large parallel support system outside regular school, but it also places a financial burden on families and remains limited by time, availability, and class size. In group settings, some students also hesitate to ask basic questions, which can leave important gaps unresolved.Large language models (LLMs) offer a possible way to make this kind of support more accessible. They can provide immediate explanations, personalized practice, and a space where students can ask questions freely. However, general-purpose systems are not well adapted to the Tunisian Baccalaureate context. They may use methods that are outside the official curriculum or present solutions in a style that does not match the expectations of Tunisian exam correction. In mathematics, this is especially important, since students are evaluated not only on correctness, but also on how they structure and write their reasoning.
 
-The Tunisian Baccalaureate mathematics examination, particularly for the
-Section Math\'{e}matiques track, is a high-stakes national assessment that
-determines university admission for thousands of students each year. Unlike
-standardized tests in other countries, the Tunisian Bac demands not only
-correct reasoning but also strict adherence to a specific \textit{correction
-redaction style}---a formal writing convention that dictates how proofs and
-solutions must be structured and phrased in French. Students who produce
-correct answers but fail to follow this style risk losing significant marks.
+This thesis is motivated by the question of whether an AI tutor can be adapted to this specific educational setting rather than simply relying on a general-purpose chatbot.
 
-Despite the widespread adoption of large language models (LLMs) in
-educational technology~\cite{kasneci2023chatgpt_education}, no existing AI
-tutoring system addresses Tunisian Bac mathematics students specifically.
-General-purpose chatbots like ChatGPT lack knowledge of the Tunisian
-curriculum boundaries---they may suggest university-level methods that are
-explicitly outside the Bac program---and they cannot reproduce the
-distinctive correction style expected by Tunisian examiners.
+\section{Problem Statement}
+The main challenge is to build a system that answers mathematics questions in a way that is both correct and useful for Tunisian Bac students. This requires staying within the official curriculum, avoiding methods that are not accepted in the exam, and generating answers in a form close to official corrections. A further difficulty is that the relevant source material is not readily available in machine-readable form. Much of it exists only as scanned pages, printed books, or handwritten corrections, which first need to be digitized and organized before they can be used in a retrieval system.
 
-This gap motivates the central question of this thesis: \textbf{Can a
-Retrieval-Augmented Generation system, grounded in a curated corpus of
-Tunisian Bac materials, produce curriculum-faithful answers that respect the
-official correction style?}
+\section{Approach}
+To address this problem, this thesis develops and evaluates an AI tutor for Tunisian Baccalaureate mathematics based on Retrieval-Augmented Generation (RAG). The system uses a curated corpus of past Bac exams, exercise series, and course material that was digitized into structured \LaTeX{}. These documents are indexed in a ChromaDB vector database using BGE-M3 embeddings and retrieved at runtime to support answer generation.The thesis compares three approaches. The first is a RAG system that grounds answers in retrieved documents. The second is a prompt-only baseline that relies on the model's internal knowledge without retrieval. The third is a hybrid system that adapts its behavior according to retrieval confidence. Comparing these three systems makes it possible to test whether retrieval actually improves performance in this domain.
 
-\subsection{Problem Statement}
-\label{subsec:problem-statement}
-
-Building an effective AI tutor for this domain requires addressing three
-challenges:
-
-\begin{enumerate}
-    \item \textbf{Curriculum fidelity.} The system must answer exclusively
-    within the Tunisian Bac program. Using out-of-curriculum methods is not
-    just unhelpful but actively harmful to exam preparation.
-
-    \item \textbf{Correction style mimicry.} Answers must follow the
-    rhetorical patterns of official corrections: standard French mathematical
-    phrasing (``On a\ldots'', ``Or\ldots'', ``Donc\ldots'',
-    ``D'apr\`{e}s\ldots'') and structured proof layouts.
-
-    \item \textbf{Document availability.} No machine-readable corpus of
-    Tunisian Bac materials exists. The primary sources are printed booklets,
-    handwritten corrections, and scanned pages that must be digitized before
-    any retrieval system can use them.
-\end{enumerate}
-
-\subsection{Approach}
-\label{subsec:approach}
-
-We address these challenges through a RAG
-pipeline~\cite{lewis2020rag} designed for the Tunisian Bac mathematics
-domain. The system comprises:
-
-\begin{itemize}
-    \item A \textbf{digitization pipeline} that converts scanned
-    mathematical documents into \LaTeX{} using multimodal LLMs.
-
-    \item A \textbf{vector database} (ChromaDB~\cite{chromadb2024}) with
-    BGE-M3 multilingual embeddings~\cite{chen2024bge_m3} and rich metadata
-    (chapter, year, session, document type).
-
-    \item A \textbf{two-stage retrieval mechanism} that first searches
-    corrected exercises for style exemplars, then falls back to course
-    material for theorem backing.
-
-    \item A \textbf{prompt compilation layer} that instructs the LLM to
-    mimic correction style when similar exercises are found, or construct
-    answers from theorems when they are not.
-\end{itemize}
-
-To evaluate the RAG approach, we compare two additional systems: a
-\textbf{prompt-only} baseline that encodes the entire curriculum in the
-system prompt without retrieval, and a \textbf{hybrid} engine that
-dynamically routes queries between RAG and prompt-only modes based on
-retrieval confidence.
-
-\subsection{Contributions}
-\label{subsec:contributions}
-
-\begin{enumerate}
-    \item The first publicly available digitized corpus of Tunisian Bac
-    mathematics materials, processed from raw scans into structured \LaTeX{}.
-
-    \item A domain-specific RAG architecture with two-stage retrieval and
-    paired exercise--correction companion fetch.
-
-    \item A systematic comparison of three generation approaches (RAG,
-    prompt-only, hybrid) evaluated by a blind human expert.
-
-    \item An open-source implementation deployable on Google Cloud Platform,
-    with a Streamlit-based tutoring interface.
-\end{enumerate}
-
-\subsection{Thesis Structure}
-\label{subsec:thesis-structure}
-
-Section~\ref{sec:background} covers the relevant background.
-Section~\ref{sec:methodology} describes the system architecture.
-Section~\ref{sec:experiments} presents experiments and results.
-Section~\ref{sec:discussion} interprets the findings and discusses
-limitations. Section~\ref{sec:conclusion} concludes with future directions.
+\section{Thesis Structure}
+The next chapter presents the relevant background. Chapter~\ref{chap:Methods} describes the system design and implementation. Chapter~\ref{chap:Results} reports the experiments and results. Chapter~\ref{chap:discussion} discusses the main findings and limitations. The thesis concludes in Chapter~\ref{chap:conclusion} with final remarks and possible future directions.
