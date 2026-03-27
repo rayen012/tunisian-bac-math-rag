@@ -1,64 +1,53 @@
-% =============================================================================
-%  CHAPTER 6 — CONCLUSION
-% =============================================================================
-\section{Conclusion}
-\label{sec:conclusion}
+\chapter{Conclusion}
+\label{chap:conclusion}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Summary}
-\label{subsec:summary}
+\section{Summary}
+\label{sec:summary}
 
-This thesis presented a RAG system for the Tunisian Baccalaureate
-mathematics examination. We built a complete pipeline---from document
-acquisition and multimodal OCR through adaptive chunking and vector
-indexing to bilingual answer generation---and compared three variants: a
-RAG system grounded in retrieved documents, a prompt-only baseline encoding
-the syllabus in the system prompt, and a hybrid engine routing between the
-two based on retrieval quality.
+This thesis presented and evaluated an AI tutor for the Tunisian
+Baccalaureate mathematics examination, with a particular focus on
+retrieval-augmented generation. The system included the full pipeline from
+document collection and digitization to indexing, retrieval, and answer
+generation. Three variants were compared: a RAG system grounded in
+retrieved documents, a prompt-only baseline without retrieval, and a hybrid
+system that adapted its behavior according to retrieval quality.
+The blind evaluation showed a result that differed from the initial
+expectation. The prompt-only baseline achieved the highest overall score
+(4.32/5), ahead of both the RAG system (3.22/5) and the hybrid system
+(3.25/5). All three systems passed the out-of-scope guardrail tests. The
+digitization pipeline also produced generally good OCR quality, with an
+average CER of 5.4\% and \LaTeX{} math expression accuracy of 97.1\%.
 
-A blind evaluation by a Tunisian Bac mathematics teacher produced a result
-counter to our initial expectations: the Prompt-Only baseline (4.32/5)
-outperformed both the RAG system (3.22/5) and the Hybrid engine (3.25/5)
-on every criterion. All three systems passed all guardrail tests. The
-digitization pipeline achieved 5.4\% CER and 97.1\% \LaTeX{} math accuracy.
+The main conclusion is that retrieval was not automatically beneficial in
+this setting. Because the base model already had strong mathematical
+knowledge, and because the retrieval corpus remained relatively limited,
+careful prompt design proved more effective than retrieval-based grounding.
+More broadly, the results suggest that the usefulness of RAG in educational
+systems depends not only on the retrieval architecture, but also on corpus
+quality, corpus coverage, and the strength of the underlying model.
 
-The key takeaway is that for a domain where the LLM's parametric knowledge
-already covers the mathematical content, and where the retrieval corpus is
-modest in scale, careful prompt engineering can outperform retrieval
-augmentation. The value of RAG depends on whether the corpus is large and
-precise enough to consistently beat what the model already knows.
-
-
-% ─────────────────────────────────────────────────────────────────────────────
-\subsection{Future Work}
-\label{subsec:future-work}
+\section{Future Work}
 \label{sec:future-work}
 
-\begin{enumerate}
-    \item \textbf{Corpus expansion.} The most direct test of whether
-    retrieval can surpass prompt engineering: significantly more exams,
-    exercise series, and corrections across all chapters. A denser corpus
-    would increase the chance of retrieving closely matching corrections.
-
-    \item \textbf{Multi-rater evaluation.} Repeating the blind evaluation
-    with multiple teachers would allow inter-rater reliability analysis. A
-    sample of 30--50 questions scored by at least two evaluators would
-    permit significance testing.
-
-    \item \textbf{Student user study.} The current evaluation measures
-    answer quality as judged by a teacher. A study with actual Bac students
-    could assess whether the system improves learning outcomes.
-
-    \item \textbf{Embedding fine-tuning.} Fine-tuning BGE-M3 on Tunisian
-    Bac text could improve chapter-level retrieval precision without
-    requiring a larger corpus.
-
-    \item \textbf{Automated evaluation.} LLM-as-judge metrics for
-    mathematical correctness and style adherence would enable larger-scale
-    evaluation without the bottleneck of manual grading.
-
-    \item \textbf{Interactive tutoring.} Adding step-by-step guided problem
-    solving---where the system reveals the solution incrementally and
-    responds to student attempts---would move it from a correction generator
-    toward an interactive tutor.
-\end{enumerate}
+Several directions could extend this work. The most important is corpus
+expansion. A larger and denser collection of past exams, exercise series,
+and corrections would make it more likely that retrieval finds genuinely
+relevant material instead of only approximate matches.
+A second direction is broader evaluation. Repeating the blind assessment
+with multiple teachers would make it possible to examine inter-rater
+agreement, while a larger question set would support a more stable
+comparison across categories.
+Another important step would be a student study. The current thesis
+evaluates answer quality from the perspective of an expert teacher, but not
+actual learning outcomes. Testing the system with Bac students would help
+determine whether the highest-rated answers also lead to better
+understanding and exam preparation.
+On the technical side, it would be useful to explore improved retrieval.
+This could include embedding fine-tuning on Tunisian Bac material, more
+precise retrieval calibration, or alternative ranking strategies designed to
+better distinguish between chapter-level similarity and true topical fit.
+Finally, the tutor could be made more interactive. Instead of only
+generating full corrections, a future version could guide the student
+step by step, react to partial attempts, and provide hints before revealing
+the final solution. This would move the system closer to a real tutoring
+assistant rather than a correction generator.
