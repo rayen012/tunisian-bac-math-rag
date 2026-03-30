@@ -1,127 +1,195 @@
-Attribute VB_Name = "Module_Config"
+Attribute VB_Name = "Module_DataImport"
 '============================================================================
-' Module_Config
-' Purpose : Central configuration for the 3-file workflow
-'           1) SIESALES export file
-'           2) New working file
-'           3) Old working file (used to backfill yellow-zone fields)
+' Module_DataImport
+' Purpose : Handles the data-refresh workflow:
+'             1. Clear old data rows (below header) while preserving formula columns
+'             2. Paste/import new data from a SIESALES source workbook
+'             3. (Optional) Yellow-zone lookup from a previous-file mapping
 '
-' IMPORTANT:
-' - Change values HERE only.
-' - Header texts must match Excel row 1 exactly.
+' IMPORTANT: This module ONLY operates on the TESTING copy of the file.
+'            Never pass the live production workbook here.
 '============================================================================
 Option Explicit
 
-' ── Sheet names ─────────────────────────────────────────────────────────────
-Public Const CFG_WORKING_SHEET           As String = "Data"
-Public Const CFG_OLD_WORKING_SHEET       As String = "Data"
-Public Const CFG_EXPORT_SHEET            As String = "Data"
-Public Const CFG_ZONE_SHEET              As String = "Zone Structure"
-Public Const CFG_LOG_SHEET               As String = "Run Log"
+' ─────────────────────────────────────────────────────────────────────────────
+' ClearOldData
+' Deletes all data rows below the header while PRESERVING formula columns
+' listed in CFG_PRESERVE_HEADERS (comma-separated in Module_Config).
+'
+' Strategy:
+'   - Collect column indices that must be preserved
+'   - For each data row, clear only the non-preserved columns
+'   - This keeps H2 / H3 formula columns intact
+' ─────────────────────────────────────────────────────────────────────────────
+Public Sub ClearOldData(ws As Worksheet)
+    Dim lastRow     As Long
+    Dim lastCol     As Long
+    Dim i           As Long, j As Long
+    Dim preserveArr() As String
+    Dim preserveCols() As Long
+    Dim k           As Long
+    Dim isPreserved As Boolean
+    Dim headerCount As Long
 
-' ── Header row number ───────────────────────────────────────────────────────
-Public Const CFG_HEADER_ROW              As Long = 1
+    lastRow = GetLastDataRow(ws)
+    lastCol = ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1
 
-' ── Key headers used for matching ───────────────────────────────────────────
-' Export file key
-Public Const COL_EXPORT_KEY              As String = "Opportunity ID"
+    ' Build the list of column indices to PRESERVE
+    preserveArr = SplitTrim(CFG_PRESERVE_HEADERS, ",")
+    headerCount = UBound(preserveArr) + 1
+    ReDim preserveCols(0 To headerCount - 1)
 
-' Working / old working file key
-Public Const COL_WORKING_KEY             As String = "SieSales ID"
+    For k = 0 To UBound(preserveArr)
+        preserveCols(k) = GetColIndex(ws, preserveArr(k), CFG_HEADER_ROW)
+        ' If 0, the header wasn't found — we'll just skip preserving it
+    Next k
 
-' ── Yellow-zone headers in working file / old working file ─────────────────
-' IMPORTANT:
-' Yellow zone starts at column B, NOT column A.
-' Column A (SieSales ID) is the lookup key and is NOT part of the yellow zone.
-Public Const COL_BUSINESS_TYPE           As String = "Business Type"
-Public Const COL_PRODUCT_TYPE            As String = "Product type"
-Public Const COL_PRIO                    As String = "Prio"
-Public Const COL_H2                      As String = "H2"
-Public Const COL_H3                      As String = "H3"
-Public Const COL_BSS_REVISED             As String = "Business Sub-Segment Short revised"
-Public Const COL_FC_RELEVANT_WORKING     As String = "FC relevant"
-Public Const COL_ZONE                    As String = "Zone"
+    ' Clear row-by-row, skipping preserved columns
+    For i = CFG_HEADER_ROW + 1 To lastRow
+        For j = 1 To lastCol
+            isPreserved = False
+            For k = 0 To UBound(preserveCols)
+                If preserveCols(k) = j And preserveCols(k) > 0 Then
+                    isPreserved = True
+                    Exit For
+                End If
+            Next k
+            If Not isPreserved Then
+                ws.Cells(i, j).ClearContents
+            End If
+        Next j
+    Next i
+End Sub
 
-' These are the yellow-zone fields to copy from OLD working file into NEW working file
-' using SieSales ID as the match key.
-Public Const CFG_YELLOW_HEADERS          As String = _
-    "Business Type,Product type,Prio,H2,H3,Business Sub-Segment Short revised,FC relevant,Zone"
+' ─────────────────────────────────────────────────────────────────────────────
+' ImportFromSIESALES
+' Copies data from a SIESALES source workbook/sheet into the data sheet.
+' Maps columns by header name so column order differences are handled.
+'
+' Parameters:
+'   wsDest      : The destination (testing) data sheet
+'   wsSrc       : The SIESALES source sheet
+'   wsLog       : Log sheet for recording import actions
+'
+' Column mapping is defined in the local colMap array below.
+' Extend it as needed — add more Source→Destination header pairs.
+' ─────────────────────────────────────────────────────────────────────────────
+Public Sub ImportFromSIESALES(wsDest As Worksheet, _
+                               wsSrc  As Worksheet, _
+                               wsLog  As Worksheet)
+    ' ── Define column mapping: Source header → Destination header ────────────
+    ' Adjust these pairs to match your actual SIESALES export column names.
+    Dim mapping(0 To 4, 0 To 1) As String   ' (row, 0=src, 1=dest)
+    mapping(0, 0) = "Opportunity ID"         : mapping(0, 1) = COL_OPPORTUNITY_ID
+    mapping(1, 0) = "Country of Installation": mapping(1, 1) = COL_COUNTRY_INSTALL
+    mapping(2, 0) = "Stage"                  : mapping(2, 1) = COL_STAGE
+    mapping(3, 0) = "Description"            : mapping(3, 1) = COL_DESCRIPTION
+    mapping(4, 0) = "Zone"                   : mapping(4, 1) = COL_ZONE
+    ' ─────────────────────────────────────────────────────────────────────────
+    ' ADD more rows here as needed, adjusting the array dimension above:
+    '   mapping(5, 0) = "Source Header"  : mapping(5, 1) = "Dest Header"
+    ' ─────────────────────────────────────────────────────────────────────────
 
-' Columns to preserve when clearing old rows
-' These are exact HEADER NAMES, not column letters.
-Public Const CFG_PRESERVE_HEADERS        As String = "H2,H3"
+    Dim srcLastRow  As Long
+    Dim destRow     As Long
+    Dim i           As Long, m As Long
+    Dim srcCols()   As Long, destCols() As Long
+    Dim pairCount   As Long
+    Dim oppId       As String
 
-' ── Headers common to export + working file ────────────────────────────────
-Public Const COL_COUNTRY_INSTALL         As String = "Country of Installation"
-Public Const COL_LEVEL_04                As String = "Level 04"
-Public Const COL_FISCAL_PERIOD           As String = "Fiscal Period"
-Public Const COL_FISCAL_YEAR             As String = "Fiscal Year"
-Public Const COL_SDH_COUNTRY             As String = "SDH Country"
-Public Const COL_OPPORTUNITY_NAME        As String = "Opportunity Name"
-Public Const COL_ACCOUNT_NAME            As String = "Account Name"
-Public Const COL_END_ACCOUNT             As String = "End-Account"
-Public Const COL_GCK_CODE                As String = "GCK Code"
-Public Const COL_BSS_SHORT               As String = "Business Sub-Segment Short"
-Public Const COL_SALES_TYPE              As String = "Sales Type"
-Public Const COL_SPG_CODE                As String = "Depth Structure: SPG Code"
-Public Const COL_SIEMENS_ACCOUNT_TYPE    As String = "Siemens Account Type"
-Public Const COL_STAGE                   As String = "Stage"
-Public Const COL_BID_APPROVAL            As String = "Bid approval (PM040)"
-Public Const COL_ORDER_INTAKE_DATE       As String = "Order Intake Date (PM070)"
-Public Const COL_GROSS_MARGIN            As String = "Gross Margin %"
-Public Const COL_WINNER                  As String = "Winner"
-Public Const COL_COMPETITOR              As String = "Competitor"
-Public Const COL_MAIN_REASON             As String = "Main Reason"
-Public Const COL_OPP_INDUSTRY_DESC       As String = "Opportunity Industry Description"
-Public Const COL_OPPORTUNITY_OWNER       As String = "Opportunity Owner"
-Public Const COL_DESCRIPTION             As String = "Description"
-Public Const COL_STRATEGIC_PRIORITY      As String = "Strategic Priority"
-Public Const COL_LOA_ID                  As String = "LoA-ID Number"
-Public Const COL_RELEVANT_FORECAST       As String = "Relevant for Forecast"
-Public Const COL_HAS_PRODUCTS            As String = "Has Products"
-Public Const COL_PRODUCT_NAME            As String = "Depth Structure: Product Name"
-Public Const COL_PRODUCT_CODE            As String = "Depth Structure: Product Code"
-Public Const COL_PCK_CODE                As String = "Depth Structure: PCK Code"
-Public Const COL_CROSS_BORDER            As String = "Cross Border (International) Business"
-Public Const COL_ALTERNATIVE_OPP         As String = "Alternative Opportunity"
-Public Const COL_BID_EXPIRATION_DATE     As String = "Bid Expiration Date"
-Public Const COL_SAP_NUMBER              As String = "SAP Number"
-Public Const COL_RFQ_RECEIVED_DATE       As String = "RFQ Received Date"
-Public Const COL_SALES_STATUS            As String = "Sales Status"
-Public Const COL_IFA                     As String = "IfA"
-Public Const COL_SALES_COUNTRY           As String = "Sales Country"
+    pairCount = UBound(mapping, 1) + 1
+    ReDim srcCols(0 To pairCount - 1)
+    ReDim destCols(0 To pairCount - 1)
 
-' ── Export-only headers ─────────────────────────────────────────────────────
-Public Const COL_EXPORT_DEL_OI_EUR       As String = "DEL_Order Intake EUR"
-Public Const COL_EXPORT_DEL_WEIGHTED_OI  As String = "DEL_Weighted Order Intake EUR"
+    ' Resolve all column indices once before the row loop
+    For m = 0 To pairCount - 1
+        srcCols(m)  = AssertColIndex(wsSrc,  mapping(m, 0))
+        destCols(m) = AssertColIndex(wsDest, mapping(m, 1))
+    Next m
 
-' ── Working-file-only headers ───────────────────────────────────────────────
-Public Const COL_CHANCE_EXECUTION        As String = "Chance of Execution %"
-Public Const COL_CHANCE_SUCCESS          As String = "Chance of Success %"
-Public Const COL_WORKING_OI_EUR          As String = " Order Intake EUR "
-Public Const COL_WORKING_WEIGHTED_OI     As String = " Weighted Order Intake EUR "
-Public Const COL_OI_PREV                 As String = " OI prev "
-Public Const COL_MATCH                   As String = " Match "
+    srcLastRow = GetLastDataRow(wsSrc)
+    destRow    = CFG_HEADER_ROW + 1   ' Start writing at first data row of dest
 
-' ── Zone structure headers ──────────────────────────────────────────────────
-Public Const ZONE_COL_COUNTRY            As String = "Country"
-Public Const ZONE_COL_ZONE               As String = "Zone"
+    For i = CFG_HEADER_ROW + 1 To srcLastRow
+        For m = 0 To pairCount - 1
+            wsDest.Cells(destRow, destCols(m)).Value = wsSrc.Cells(i, srcCols(m)).Value
+        Next m
 
-' ── Business-rule constants ─────────────────────────────────────────────────
-Public Const RULE_CLOSED_WON             As String = "Closed Won"
-Public Const RULE_FC_VALUE               As String = "FC"
+        ' Log the import (use Opportunity ID for traceability)
+        oppId = CStr(wsDest.Cells(destRow, destCols(0)).Value)
+        WriteLog wsLog, destRow, oppId, "Import", "All mapped columns", "", "", "IMPORTED"
 
-Public Const RULE_H2_BIZ_TYPE            As String = "H2"
-Public Const RULE_H3_BIZ_TYPE            As String = "H3"
+        destRow = destRow + 1
+    Next i
+End Sub
 
-Public Const RULE_ZL_MARKER              As String = "#ZL"
-Public Const RULE_CLOSED_CANCELLED       As String = "Closed / Cancelled"
-Public Const RULE_CLOSED_LOST            As String = "Closed Lost"
+' ─────────────────────────────────────────────────────────────────────────────
+' FillYellowZoneFromPreviousFile
+' Fills the "yellow zone" columns by looking up Opportunity ID in a previous
+' version of the file and copying values for the mapped columns.
+'
+' Parameters:
+'   wsDest    : Current (testing) data sheet
+'   wsPrev    : Sheet from the previous file (open in the same Excel instance)
+'   wsLog     : Log sheet
+'   yellowCols: Array of column header names that constitute the yellow zone
+'
+' Assumption: Opportunity ID is the join key.
+' ─────────────────────────────────────────────────────────────────────────────
+Public Sub FillYellowZoneFromPreviousFile(wsDest     As Worksheet, _
+                                          wsPrev     As Worksheet, _
+                                          wsLog      As Worksheet, _
+                                          yellowCols() As String)
+    ' Build a lookup dictionary: OppId → row number in previous sheet
+    Dim prevDict    As Object
+    Dim colPrevId   As Long, colDestId As Long
+    Dim lastRowPrev As Long, lastRowDest As Long
+    Dim i As Long, m As Long
+    Dim destColIdx  As Long, prevColIdx As Long
+    Dim oppId As String, oldVal As String, newVal As String
 
-Public Const RULE_H2_BSS                 As String = "SI GSW SOL SPL Operations"
-Public Const RULE_H3_BSS                 As String = "SI GSW SOL SPL Operations"
+    Set prevDict = CreateObject("Scripting.Dictionary")
+    prevDict.CompareMode = 1   ' case-insensitive
 
-Public Const RULE_NA_ZONE                As String = "N/A"
+    colPrevId = AssertColIndex(wsPrev, COL_OPPORTUNITY_ID)
+    colDestId = AssertColIndex(wsDest, COL_OPPORTUNITY_ID)
 
-' ── Safety / path check ─────────────────────────────────────────────────────
-Public Const CFG_REQUIRED_TEST_PATH_TEXT As String = "TEST"
+    lastRowPrev = GetLastDataRow(wsPrev)
+    lastRowDest = GetLastDataRow(wsDest)
+
+    ' Index previous file: OppId → row
+    For i = CFG_HEADER_ROW + 1 To lastRowPrev
+        oppId = Trim(wsPrev.Cells(i, colPrevId).Value)
+        If oppId <> "" And Not prevDict.Exists(oppId) Then
+            prevDict.Add oppId, i
+        End If
+    Next i
+
+    ' For each yellow-zone column, copy values where OppId matches
+    For m = 0 To UBound(yellowCols)
+        destColIdx = GetColIndex(wsDest, yellowCols(m))
+        prevColIdx = GetColIndex(wsPrev, yellowCols(m))
+
+        ' Only process if both sheets have this column
+        If destColIdx = 0 Or prevColIdx = 0 Then GoTo NextCol
+
+        For i = CFG_HEADER_ROW + 1 To lastRowDest
+            oppId = Trim(wsDest.Cells(i, colDestId).Value)
+            If oppId <> "" And prevDict.Exists(oppId) Then
+                Dim prevRow As Long
+                prevRow = prevDict(oppId)
+                oldVal  = CStr(wsDest.Cells(i, destColIdx).Value)
+                newVal  = CStr(wsPrev.Cells(prevRow, prevColIdx).Value)
+
+                If oldVal <> newVal Then
+                    WriteLog wsLog, i, oppId, _
+                             "Yellow Zone Fill", yellowCols(m), _
+                             oldVal, newVal, "FILLED FROM PREV"
+                    wsDest.Cells(i, destColIdx).Value = newVal
+                End If
+            End If
+        Next i
+
+NextCol:
+    Next m
+End Sub
