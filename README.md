@@ -54,27 +54,27 @@ To make the repository easier to inspect without access to the full corpus, the 
 
 ### Core Pipeline
 
-- **`config.py`** — Central configuration file. Contains GCP settings, model IDs, chunk sizes, thresholds, and paths.
-- **`digitize.py`** — Digitization pipeline. Sends scanned Bac documents (PDFs or images) to Gemini for OCR-like transcription and stores the resulting `.tex` files in Google Cloud Storage.
-- **`build_db.py`** — Indexing pipeline. Downloads `.tex` files from Google Cloud Storage, normalizes them, splits them into chunks, embeds them using BGE-M3, and stores them in a local ChromaDB database together with metadata.
+- **`config.py`** : Central configuration file. Contains GCP settings, model IDs, chunk sizes, thresholds, and paths.
+- **`digitize.py`** : Digitization pipeline. Sends scanned Bac documents (PDFs or images) to Gemini for OCR-like transcription and stores the resulting `.tex` files in Google Cloud Storage.
+- **`build_db.py`** : Indexing pipeline. Downloads `.tex` files from Google Cloud Storage, normalizes them, splits them into chunks, embeds them using BGE-M3, and stores them in a local ChromaDB database together with metadata.
 
 ### System Variants
 
-- **`rag_engine.py`** — Retrieval-augmented pipeline with two-stage retrieval and answer generation.
-- **`prompt_only_engine.py`** — Prompt-only baseline without retrieval.
-- **`hybrid_engine.py`** — Hybrid routing system that switches between retrieval-heavy and prompt-only behavior depending on retrieval quality.
+- **`rag_engine.py`** : Retrieval-augmented pipeline with two-stage retrieval and answer generation.
+- **`prompt_only_engine.py`** : Prompt-only baseline without retrieval.
+- **`hybrid_engine.py`** : Hybrid routing system that switches between retrieval-heavy and prompt-only behavior depending on retrieval quality.
 
 ### Evaluation Scripts
 
-- **`evaluation/eval_questions.py`** — Defines the 20 evaluation questions across five categories.
-- **`evaluation/run_evaluation.py`** — Runs the three systems on the evaluation question set.
-- **`evaluation/generate_grading_sheets.py`** — Creates anonymized grading materials for blind evaluation.
-- **`evaluation/generate_teacher_pdf.py`** — Produces printable HTML grading sheets for the teacher.
-- **`evaluation/analyze_grades.py`** — Unblinds the evaluation and computes average scores.
-- **`evaluation/detailed_analysis.py`** — Performs retrieval analysis, including routing behavior and qualitative case review.
-- **`evaluation/embedding_comparison.py`** — Compares BGE-M3 with Google text-embedding-005.
-- **`evaluation/variable_sensitivity_probe.py`** — Tests whether notation changes such as `u_n` vs. `v_n` affect retrieval behavior.
-- **`evaluation/ocr_ground_truth_eval.py`** — Evaluates OCR quality against manually corrected references using metrics such as CER and WER.
+- **`evaluation/eval_questions.py`** : Defines the 20 evaluation questions across five categories.
+- **`evaluation/run_evaluation.py`** : Runs the three systems on the evaluation question set.
+- **`evaluation/generate_grading_sheets.py`** : Creates anonymized grading materials for blind evaluation.
+- **`evaluation/generate_teacher_pdf.py`** : Produces printable HTML grading sheets for the teacher.
+- **`evaluation/analyze_grades.py`** : Unblinds the evaluation and computes average scores.
+- **`evaluation/detailed_analysis.py`** : Performs retrieval analysis, including routing behavior and qualitative case review.
+- **`evaluation/embedding_comparison.py`** : Compares BGE-M3 with Google text-embedding-005.
+- **`evaluation/variable_sensitivity_probe.py`** : Tests whether notation changes such as `u_n` vs. `v_n` affect retrieval behavior.
+- **`evaluation/ocr_ground_truth_eval.py`** : Evaluates OCR quality against manually corrected references using metrics such as CER and WER.
 
 ## How the Pipeline Works
 
@@ -179,10 +179,10 @@ python evaluation/ocr_ground_truth_eval.py
 
 Most settings are defined in `config.py`. The most important ones are:
 
-- **`PROJECT_ID`**, **`BUCKET_NAME`** — Google Cloud project and storage bucket
-- **`CHAT_MODEL_ID`** — Gemini generation model ID
-- **`SIMILARITY_GOOD_THRESHOLD`** (1.2) and **`SIMILARITY_FALLBACK_THRESHOLD`** (1.6) — L2 distance thresholds used by the hybrid router
-- **`CHUNK_CORRECTION`** and **`CHUNK_COURS`** — Chunk sizes for correction material and course material
+- **`PROJECT_ID`**, **`BUCKET_NAME`** : Google Cloud project and storage bucket
+- **`CHAT_MODEL_ID`** : Gemini generation model ID
+- **`SIMILARITY_GOOD_THRESHOLD`** (1.2) and **`SIMILARITY_FALLBACK_THRESHOLD`** (1.6) : L2 distance thresholds used by the hybrid router
+- **`CHUNK_CORRECTION`** and **`CHUNK_COURS`** : Chunk sizes for correction material and course material
 
 ## Minimal Path to Reproduce the Workflow
 
