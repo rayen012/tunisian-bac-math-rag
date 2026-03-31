@@ -4,6 +4,87 @@ This repository contains the code developed for my Bachelor's thesis at the Tech
 
 The project implements an AI tutor for the Tunisian Baccalaureate mathematics examination (Section Mathématiques). Its purpose is to answer mathematics questions in a way that remains aligned with the official curriculum and with the style of Tunisian Bac corrections. The generated answers are written mainly in French and may include short motivational phrases in Tunisian Derja.
 
+## Pipeline Overview
+
+### End-to-End Pipeline
+
+```
+Scanned Exams (PDF/images)
+        |
+        v
+ +-------------+       +-----------------+
+ | digitize.py | ----> | .tex files      |
+ | (Gemini OCR)|       | (on GCS bucket) |
+ +-------------+       +-----------------+
+                                |
+                                v
+                       +---------------+       +------------------+
+                       | build_db.py   | ----> | ChromaDB         |
+                       | (chunk+embed) |       | (BGE-M3 vectors  |
+                       +---------------+       |  + metadata)     |
+                                               +------------------+
+                                                       |
+                             +-------------------------+
+                             |            |            |
+                             v            v            v
+                       +---------+  +---------+  +---------+
+                       |   RAG   |  | Prompt  |  | Hybrid  |
+                       | Engine  |  |  Only   |  | Engine  |
+                       +---------+  +---------+  +---------+
+                             |            |            |
+                             v            v            v
+                       +--------------------------------------+
+                       |         Gemini 2.5 Flash             |
+                       |      (answer generation, T=0.15)     |
+                       +--------------------------------------+
+                                        |
+                                        v
+                                  Student Answer
+                              (French + Derja style)
+```
+
+### Hybrid Engine Routing
+
+```
+Student Question
+       |
+       v
+  Two-Stage Retrieval (via rag_engine)
+       |
+       v
+  Best L2 Distance?
+       |
+       +--- distance <= 1.2 ---> Case A: use retrieved context directly
+       |
+       +--- distance <= 1.6 ---> Case B: retrieved context + curriculum prompt
+       |
+       +--- distance >  1.6 ---> Case C: prompt-only fallback (no retrieval)
+```
+
+### Evaluation Pipeline
+
+```
+20 questions (5 categories)
+       |
+       v
+  run_evaluation.py  --->  3 systems x 20 questions = 60 answers
+       |
+       v
+  generate_grading_sheets.py  --->  anonymized (Systeme X/Y/Z)
+       |
+       v
+  generate_teacher_pdf.py  --->  printable grading sheets
+       |
+       v
+  Teacher grades blindly (4 criteria, 0-5 scale)
+       |
+       v
+  analyze_grades.py  --->  unblind + compute averages
+       |
+       v
+  detailed_analysis.py  --->  retrieval quality, routing stats
+```
+
 ## Project Overview
 
 The repository includes three system variants:
@@ -199,6 +280,18 @@ A minimal end-to-end run is:
 ## Sample LaTeX Files
 
 The `samples/` directory contains a few example `.tex` files from the digitized corpus. These are included so that the OCR output and corpus structure can be inspected without access to the original scanned exam images.
+
+## Roadmap
+
+The current system was built and evaluated as part of a Bachelor's thesis. Several directions could improve it further:
+
+- **Expand the corpus**: add more chapters, more years of Bac exams, and series exercises to increase retrieval coverage
+- **Improve chunking**: experiment with semantic chunking instead of fixed character-based splitting, to better preserve logical exercise boundaries
+- **Fine-tune embeddings**: train or fine-tune an embedding model on Tunisian Bac math content specifically, rather than relying on a general multilingual model
+- **Structured metadata search**: combine vector similarity with structured filters (chapter, year, exercise type) at query time, to reduce retrieval noise
+- **Multilingual prompt tuning**: improve the Derja/French prompt balance based on student feedback
+- **Interactive mode**: add a conversational interface where the student can ask follow-up questions on the same exercise
+- **Better OCR post-processing**: add a LaTeX validation pass after Gemini OCR to catch and fix common transcription errors before indexing
 
 ## Thesis Context
 
