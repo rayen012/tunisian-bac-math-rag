@@ -1,0 +1,48 @@
+\section*{Correction}
+\subsection*{Exercice 1}
+On considère dans $\mathbb{Z} \times \mathbb{Z}$ l'équation (E): $16x+19y=2017$.
+
+\begin{enumerate}
+    \item $\sqrt{2017} \approx 44{,}9$.
+    Les nombres premiers inférieurs à $44{,}9$ sont $\{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43\}$.
+    $2017$ n'est divisible par aucun de ces entiers alors $2017$ est premier.
+
+    \item $16 \times 18 + 19 \times 91 = 288 + 1729 = 2017$ (vrai).
+
+    \item On a:
+    \begin{align*} 16x+19y=2017 &\iff 16x+19y=16 \times 18+19 \times 91 \\ &\iff 16(x-18)=-19(y-91) \end{align*}
+    Puisque $19 \mid 16(x-18)$ et $16 \wedge 19 = 1$, d'après le théorème de Gauss, $19 \mid (x-18)$.
+    Ainsi, $x-18=19k$, avec $k \in \mathbb{Z}$.
+    Par conséquent:
+    \begin{align*}
+    &\iff \begin{cases} 16(19k)=-19(y-91) \\ x=18+19k,\; k \in \mathbb{Z} \end{cases} \\
+    &\iff \begin{cases} 16k=-(y-91) \\ x=18+19k,\; k \in \mathbb{Z} \end{cases} \\
+    &\iff \begin{cases} x=18+19k \\ y=91-16k,\; k \in \mathbb{Z} \end{cases}
+    \end{align*}
+
+    \item Soit $(x,y)$ une solution de (E). On a $16x+19y=2017$.
+    Soit $d = x \wedge y$. Alors $d \mid x$ et $d \mid y$, donc $d \mid (16x+19y)$, c'est-à-dire $d \mid 2017$.
+    Or $2017$ est premier, donc $d = 1$ ou $d = 2017$.
+
+    \item On a $637 \times 19 = 12103 = 6 \times 2017 + 1$.
+    Donc $637 \times 19 \equiv 1 \pmod{2017}$.
+    Ainsi, $637$ est un inverse de $19$ modulo $2017$.
+
+    \item Cherchons les valeurs de $k$ telles que $x \wedge y = 2017$ (pour ensuite les exclure).
+    On a $x \wedge y = 2017$ si et seulement si $2017 \mid x$ et $2017 \mid y$.
+
+    $2017 \mid x \iff 18+19k \equiv 0 \pmod{2017} \iff 19k \equiv -18 \equiv 1999 \pmod{2017}$.
+
+    En multipliant par $637$ (inverse de $19$ modulo $2017$):
+    $k \equiv 637 \times 1999 \pmod{2017}$.
+
+    Or $637 \times 1999 = 1273363$ et $1273363 = 631 \times 2017 + 636$, donc $k \equiv 636 \pmod{2017}$.
+
+    Vérification: si $k = 636$, alors $x = 18 + 19 \times 636 = 12102 = 6 \times 2017$ et $y = 91 - 16 \times 636 = -10085 = -5 \times 2017$.
+    Donc $x \wedge y = 2017$.
+
+    Par conséquent, les couples $(x,y)$ solutions de (E) tels que $x \wedge y = 1$ sont:
+    \[
+    \begin{cases} x = 18+19k \\ y = 91-16k \end{cases}, \quad k \in \mathbb{Z},\; k \not\equiv 636 \pmod{2017}.
+    \]
+\end{enumerate}
