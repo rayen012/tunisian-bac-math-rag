@@ -329,7 +329,7 @@ class TunisianMathPromptOnly:
 
         Args:
             question: Student's math question (French or Derja).
-            mode: "correction" for dry bac-style answer,
+            mode: "correction" for concise Bac-style answer,
                   "coaching" for pedagogical explanation.
 
         Returns:

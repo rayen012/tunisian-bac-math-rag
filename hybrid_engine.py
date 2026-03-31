@@ -1,6 +1,7 @@
 """
-Hybrid engine: routes each query to RAG, mixed, or prompt-only based on
-retrieval quality (Case A/B/C). Composes rag_engine + prompt_only_engine.
+Hybrid engine: routes each query to RAG, mixed, or prompt-only behavior
+based on retrieval quality (Case A/B/C). Reuses rag_engine for retrieval
+and defines its own prompt-only fallback for Case C.
 """
 
 import time
@@ -484,7 +485,7 @@ class TunisianMathHybrid:
 
         Args:
             question: Student's math question (French or Derja).
-            mode: "correction" for dry bac-style answer,
+            mode: "correction" for concise Bac-style answer,
                   "coaching" for pedagogical explanation.
 
         Returns:
