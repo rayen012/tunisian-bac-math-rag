@@ -1,130 +1,211 @@
 # Tunisian Bac Math RAG
 
-This is the code for my Bachelor thesis at TUM. It's an AI math tutor for the Tunisian Baccalaureate (Section Maths) that answers questions using the official curriculum, in French with Tunisian Derja motivational phrases.
+This repository contains the code developed for my Bachelor's thesis at the Technical University of Munich (TUM).
 
-The project compares three different approaches to answering math questions:
+The project implements an AI tutor for the Tunisian Baccalaureate mathematics examination (Section Mathématiques). Its purpose is to answer mathematics questions in a way that remains aligned with the official curriculum and with the style of Tunisian Bac corrections. The generated answers are written mainly in French and may include short motivational phrases in Tunisian Derja.
 
-- **RAG** — retrieves relevant corrections and course material from a vector database, then generates an answer grounded in that context
-- **Prompt-Only** — no retrieval at all, just a carefully crafted prompt with the full curriculum encoded directly
-- **Hybrid** — tries retrieval first, then decides whether the results are good enough to use (Case A), partially useful (Case B), or useless (Case C, falls back to prompt-only)
+## Project Overview
 
-All three use the same Gemini model with the same temperature (0.15) so the only variable is where the knowledge comes from.
+The repository includes three system variants:
+
+- **RAG**: retrieves relevant correction and course-material chunks from a vector database, then generates an answer grounded in that retrieved context.
+- **Prompt-Only**: does not use retrieval. Instead, the curriculum constraints and answer style are encoded directly in the system prompt.
+- **Hybrid**: starts with retrieval, then routes between three behaviors depending on retrieval quality:
+  - **Case A**: strong retrieval, use retrieved context directly
+  - **Case B**: partially useful retrieval, combine retrieved context with broader prompt guidance
+  - **Case C**: weak retrieval, fall back to the prompt-only strategy
+
+In the evaluation setup, all three variants use the same Gemini generation model and the same generation temperature (`0.15`). The main experimental difference is therefore how domain knowledge is supplied at inference time.
 
 ## Prerequisites
 
-- Python 3.10+
-- A GCP project with Vertex AI enabled
-- GCP credentials set up (`export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"`)
+Before running the project, make sure you have the following:
+
+- Python 3.10 or higher
+- A Google Cloud project with Vertex AI enabled
+- Access to a Google Cloud Storage bucket for the corpus
+- Valid Google Cloud credentials
+
+Install the Python dependencies with:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## How it works (step by step)
-
-### 1. Digitize the exams
-
-`digitize.py` takes raw PDFs and images of Bac exams from a GCS bucket and sends them to Gemini for OCR. The output is clean LaTeX (.tex files) saved back to GCS.
+Set the Google Cloud credentials environment variable before running the pipeline:
 
 ```bash
-python digitize.py --dry_run     # see what needs processing
-python digitize.py --max_files 50  # process 50 files
-python digitize.py                 # process everything
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
 ```
 
-### 2. Build the vector database
-
-`build_db.py` downloads the .tex files from GCS, splits them into chunks, embeds them with BGE-M3, and stores everything in a local ChromaDB database. It also extracts metadata (chapter, document type, year, whether it's a correction, etc.) so we can filter at query time.
-
-Corrections get smaller chunks (1500 chars) to keep exercise boundaries clean. Course material gets bigger chunks (3000 chars) to keep theorems intact.
-
-The script tracks what's already been indexed (via a manifest file) so re-running it only processes new or changed files.
+If `requirements.txt` still needs to be generated from the current environment, you can create it with:
 
 ```bash
-python build_db.py                # incremental update
-python build_db.py --full_rebuild # start fresh
-python build_db.py --stats        # see what's in the DB
+pip freeze > requirements.txt
 ```
 
-### 3. Query the engines
+## Data Availability
 
-Each engine has the same interface — `engine.query(question, mode)` where mode is either `"correction"` (dry Bac-style answer) or `"coaching"` (more pedagogical).
+The full raw corpus is not included in this repository. It consists of scanned Tunisian Bac materials collected for the thesis and stored in a private Google Cloud Storage bucket.
+
+To make the repository easier to inspect without access to the full corpus, the `samples/` directory contains a few example `.tex` files produced by the digitization pipeline. These illustrate the structure of the OCR output and the type of material indexed by the system.
+
+## Repository Structure
+
+### Core Pipeline
+
+- **`config.py`** — Central configuration file. Contains GCP settings, model IDs, chunk sizes, thresholds, and paths.
+- **`digitize.py`** — Digitization pipeline. Sends scanned Bac documents (PDFs or images) to Gemini for OCR-like transcription and stores the resulting `.tex` files in Google Cloud Storage.
+- **`build_db.py`** — Indexing pipeline. Downloads `.tex` files from Google Cloud Storage, normalizes them, splits them into chunks, embeds them using BGE-M3, and stores them in a local ChromaDB database together with metadata.
+
+### System Variants
+
+- **`rag_engine.py`** — Retrieval-augmented pipeline with two-stage retrieval and answer generation.
+- **`prompt_only_engine.py`** — Prompt-only baseline without retrieval.
+- **`hybrid_engine.py`** — Hybrid routing system that switches between retrieval-heavy and prompt-only behavior depending on retrieval quality.
+
+### Evaluation Scripts
+
+- **`evaluation/eval_questions.py`** — Defines the 20 evaluation questions across five categories.
+- **`evaluation/run_evaluation.py`** — Runs the three systems on the evaluation question set.
+- **`evaluation/generate_grading_sheets.py`** — Creates anonymized grading materials for blind evaluation.
+- **`evaluation/generate_teacher_pdf.py`** — Produces printable HTML grading sheets for the teacher.
+- **`evaluation/analyze_grades.py`** — Unblinds the evaluation and computes average scores.
+- **`evaluation/detailed_analysis.py`** — Performs retrieval analysis, including routing behavior and qualitative case review.
+- **`evaluation/embedding_comparison.py`** — Compares BGE-M3 with Google text-embedding-005.
+- **`evaluation/variable_sensitivity_probe.py`** — Tests whether notation changes such as `u_n` vs. `v_n` affect retrieval behavior.
+- **`evaluation/ocr_ground_truth_eval.py`** — Evaluates OCR quality against manually corrected references using metrics such as CER and WER.
+
+## How the Pipeline Works
+
+### 1. Digitize the Exams
+
+`digitize.py` reads raw PDFs and images of Bac exams from a GCS bucket and sends them to Gemini for OCR-like transcription. The output is saved as LaTeX (`.tex`) files back to Google Cloud Storage.
+
+```bash
+python digitize.py --dry_run
+python digitize.py --max_files 50
+python digitize.py
+```
+
+Notes:
+
+- `--dry_run` shows which files would be processed
+- `--max_files 50` processes only a subset
+- running without arguments processes all remaining files
+
+### 2. Build the Vector Database
+
+`build_db.py` downloads the `.tex` files from GCS, splits them into chunks, embeds them with BGE-M3, and stores them in a local ChromaDB database. It also extracts metadata such as chapter, document type, year, and whether the chunk belongs to a correction, so that retrieval can later use filtering in addition to similarity search.
+
+Corrections use smaller chunks (1500 characters) to preserve local exercise structure. Course material uses larger chunks (3000 characters) to preserve theorem context.
+
+The indexing script also tracks what has already been processed through a manifest file, so re-running it only updates new or modified files.
+
+```bash
+python build_db.py
+python build_db.py --full_rebuild
+python build_db.py --stats
+```
+
+Notes:
+
+- default mode performs an incremental update
+- `--full_rebuild` rebuilds the database from scratch
+- `--stats` prints database statistics
+
+### 3. Query the Engines
+
+Each engine exposes the same interface:
+
+```python
+engine.query(question, mode)
+```
+
+The `mode` argument can be:
+
+- `"correction"` for a concise Bac-style answer
+- `"coaching"` for a more explanatory and pedagogical answer
+
+Example:
 
 ```python
 from rag_engine import TunisianMathRAG
+
 engine = TunisianMathRAG()
-result = engine.query("Calculer l'intégrale I = ∫₀¹ x·eˣ dx", mode="correction")
+result = engine.query(
+    "Calculer l'intégrale I = ∫₀¹ x·eˣ dx",
+    mode="correction"
+)
 print(result.answer)
 ```
 
-Same thing works with `TunisianMathPromptOnly` and `TunisianMathHybrid`.
+The same pattern applies to `TunisianMathPromptOnly` and `TunisianMathHybrid`.
 
-### 4. Run the evaluation
+### 4. Run the Evaluation
 
-```bash
-python evaluation/run_evaluation.py                 # all 20 questions x 3 systems
-python evaluation/run_evaluation.py --category A    # just category A
-python evaluation/run_evaluation.py --dry-run       # preview without API calls
-```
-
-After running the evaluation:
+To reproduce the main evaluation:
 
 ```bash
-python evaluation/generate_grading_sheets.py   # create blind grading materials
-python evaluation/generate_teacher_pdf.py      # HTML sheets for the teacher
-python evaluation/analyze_grades.py            # unblind and compute scores
-python evaluation/detailed_analysis.py         # deep dive into retrieval quality
+python evaluation/run_evaluation.py
+python evaluation/run_evaluation.py --category A
+python evaluation/run_evaluation.py --dry-run
 ```
 
-Other experiments:
+Notes:
+
+- default mode runs all 20 questions on all 3 systems
+- `--category A` restricts the run to one category
+- `--dry-run` previews the run without API calls
+
+After running the evaluation, use the following scripts:
 
 ```bash
-python evaluation/embedding_comparison.py       # BGE-M3 vs Google embeddings
-python evaluation/variable_sensitivity_probe.py # u_n vs v_n sensitivity test
-python evaluation/ocr_ground_truth_eval.py      # OCR quality (CER, WER)
+python evaluation/generate_grading_sheets.py
+python evaluation/generate_teacher_pdf.py
+python evaluation/analyze_grades.py
+python evaluation/detailed_analysis.py
 ```
 
-## File overview
+Additional experiments:
 
-### Core pipeline
-
-| File | What it does |
-|------|-------------|
-| `config.py` | All settings in one place (GCP config, model IDs, chunking sizes, thresholds) |
-| `digitize.py` | OCR pipeline: scanned exams → LaTeX via Gemini |
-| `build_db.py` | Indexing pipeline: .tex files → ChromaDB with BGE-M3 embeddings |
-
-### The three engines
-
-| File | What it does |
-|------|-------------|
-| `rag_engine.py` | Two-stage retrieval (corrections first, then course material) + Gemini generation |
-| `prompt_only_engine.py` | Zero retrieval — full Bac curriculum encoded in the prompt |
-| `hybrid_engine.py` | Routes to RAG, mixed, or prompt-only based on retrieval quality |
-
-### Evaluation
-
-| File | What it does |
-|------|-------------|
-| `evaluation/eval_questions.py` | 20 test questions in 5 categories (A: Bac-style, B: novel, C: informal, D: Derja, E: out-of-scope) |
-| `evaluation/run_evaluation.py` | Runs all questions through all 3 engines |
-| `evaluation/generate_grading_sheets.py` | Creates blind grading materials (Systeme X/Y/Z) |
-| `evaluation/generate_teacher_pdf.py` | Printable HTML with MathJax for the teacher |
-| `evaluation/analyze_grades.py` | Unblinds scores and computes averages |
-| `evaluation/detailed_analysis.py` | Retrieval quality analysis, case distribution, qualitative examples |
-| `evaluation/embedding_comparison.py` | BGE-M3 vs Google text-embedding-005 comparison |
-| `evaluation/variable_sensitivity_probe.py` | Tests if changing u_n to v_n changes retrieval results |
-| `evaluation/ocr_ground_truth_eval.py` | Measures OCR accuracy against manually corrected references |
+```bash
+python evaluation/embedding_comparison.py
+python evaluation/variable_sensitivity_probe.py
+python evaluation/ocr_ground_truth_eval.py
+```
 
 ## Configuration
 
-Everything is in `config.py`. The main things you might want to change:
+Most settings are defined in `config.py`. The most important ones are:
 
-- `PROJECT_ID`, `BUCKET_NAME` — your GCP project and storage bucket
-- `CHAT_MODEL_ID` — which Gemini model to use (default: `gemini-2.5-flash`)
-- `SIMILARITY_GOOD_THRESHOLD` (1.2) and `SIMILARITY_FALLBACK_THRESHOLD` (1.6) — L2 distance thresholds for the hybrid router
-- `CHUNK_CORRECTION` and `CHUNK_COURS` — chunk sizes per document type
+- **`PROJECT_ID`**, **`BUCKET_NAME`** — Google Cloud project and storage bucket
+- **`CHAT_MODEL_ID`** — Gemini generation model ID
+- **`SIMILARITY_GOOD_THRESHOLD`** (1.2) and **`SIMILARITY_FALLBACK_THRESHOLD`** (1.6) — L2 distance thresholds used by the hybrid router
+- **`CHUNK_CORRECTION`** and **`CHUNK_COURS`** — Chunk sizes for correction material and course material
 
-## Sample LaTeX files
+## Minimal Path to Reproduce the Workflow
 
-The `samples/` directory contains a few example .tex files from the digitized corpus, so you can see what the OCR output looks like without needing access to the full GCS bucket.
+A minimal end-to-end run is:
+
+1. Configure `config.py`
+2. Set Google Cloud credentials
+3. Run `digitize.py`
+4. Run `build_db.py`
+5. Instantiate one of the engines and call `query(...)`
+6. Run `evaluation/run_evaluation.py`
+7. Generate grading sheets and analyze results
+
+## Sample LaTeX Files
+
+The `samples/` directory contains a few example `.tex` files from the digitized corpus. These are included so that the OCR output and corpus structure can be inspected without access to the original scanned exam images.
+
+## Thesis Context
+
+This repository accompanies a Bachelor's thesis comparing three approaches to curriculum-aware mathematical question answering for the Tunisian Baccalaureate:
+
+- retrieval-augmented generation
+- prompt-only generation
+- hybrid retrieval-aware routing
+
+The repository is intended to make the system structure, execution steps, and evaluation pipeline understandable and reproducible.
