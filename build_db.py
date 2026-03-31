@@ -189,7 +189,7 @@ def detect_is_solution(blob_name: str) -> bool:
     # Regex: _sol followed by word boundary, dot, space, underscore, or end
     if re.search(r"_sol(?=[\s_.(]|$)", filename):
         return True
-    if re.search(r"[\b_]corr(?:ig|ection|\.)", filename):
+    if re.search(r"(?:\b|_)corr(?:ig|ection|\.)", filename):
         return True
 
     # ── Path-level checks ──────────────────────────────────────
@@ -361,6 +361,12 @@ def main():
     # ── ChromaDB ──
     client = chromadb.PersistentClient(path=LOCAL_DB_PATH)
     embedding_fn = BGEM3EmbeddingFunction()
+    if args.full_rebuild:
+        try:
+            client.delete_collection(name=COLLECTION_NAME)
+            logger.info(f"Deleted existing collection '{COLLECTION_NAME}' for full rebuild")
+        except ValueError:
+            pass  # collection doesn't exist yet
     collection = client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=embedding_fn,
