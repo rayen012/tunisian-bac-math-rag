@@ -1,26 +1,7 @@
 #!/usr/bin/env python3
 """
-detailed_analysis.py
---------------------
-Post-evaluation analysis for the thesis:
-  1. Per-question detailed breakdown (heatmap data)
-  2. Retrieval case (A/B/C) distribution and routing analysis
-  3. Retrieval quality metrics (distance distributions, first-pass vs second-pass)
-  4. Qualitative examples (side-by-side system outputs)
-
-Reads:
-  - evaluation/results/eval_results_latest.json  (from run_evaluation.py)
-  - evaluation/results/grading_template.json     (teacher grades, if available)
-  - evaluation/results/answer_key.json           (blind→real mapping)
-
-Output:
-  - evaluation/results/detailed_analysis_YYYYMMDD_HHMMSS.json
-  - Console tables + LaTeX-ready tables
-
-Usage:
-  python evaluation/detailed_analysis.py
-  python evaluation/detailed_analysis.py --eval evaluation/results/eval_results_latest.json
-  python evaluation/detailed_analysis.py --qualitative   # also print full answer texts
+Post-evaluation analysis: per-question breakdown, case distribution, retrieval
+quality, and qualitative examples for the thesis.
 """
 
 import argparse

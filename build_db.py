@@ -1,27 +1,12 @@
 #!/usr/bin/env python3
 """
-build_db.py
------------
-Index .tex files from Google Cloud Storage into local ChromaDB.
-
-Architecture decisions (thesis-grade):
-  1. ADAPTIVE CHUNKING: corrections get smaller chunks (1500 chars) to preserve
-     exercise boundaries; course material (cours) gets larger chunks (3000) to
-     keep theorem context intact.  This directly improves retrieval precision.
-  2. RICH METADATA: type / year / chapter / session / exo_id / is_solution /
-     group_id / source — enabling filtered retrieval at query time.
-  3. INCREMENTAL UPSERT: manifest tracks GCS generation + content SHA-256.
-     Only re-embeds files whose content actually changed.  Cuts re-index
-     time from hours to seconds for unchanged corpora.
-  4. STABLE CHUNK IDs: "{source_uri}::chunk_{i}" — deterministic, so upsert
-     replaces the same logical chunk rather than creating duplicates.
-  5. CPU-SAFE: auto-detects GPU for fp16; works on laptops.
+Indexes .tex files from GCS into local ChromaDB with BGE-M3 embeddings.
+Uses adaptive chunking, rich metadata, and incremental updates via a manifest.
 
 Usage:
-  python build_db.py                  # index all .tex files (incremental)
-  python build_db.py --max_files 100  # first 100
-  python build_db.py --full_rebuild   # wipe manifest, re-index everything
-  python build_db.py --stats          # print DB stats without indexing
+  python build_db.py                  # incremental index
+  python build_db.py --full_rebuild   # re-index everything
+  python build_db.py --stats          # print DB stats
 """
 
 import argparse
@@ -183,14 +168,7 @@ def extract_chapter(blob_name: str) -> str:
 
 
 def guess_doc_type(blob_name: str) -> str:
-    """Classify document type from its GCS path.
-
-    Final corpus structure:
-      BacMath_Raw_Data/
-        <chapter>/Cours/             → "cours"
-        <chapter>/series_et_corrections/  → "serie"
-        Bac_avec_corrections_Images/      → "bac_officiel"
-    """
+    """Classify document type from its GCS path."""
     n = blob_name.lower()
     # Order matters: more specific patterns first
     if "bac_avec_corrections" in n or re.search(r"bac\d{4}", n):
@@ -203,20 +181,7 @@ def guess_doc_type(blob_name: str) -> str:
 
 
 def detect_is_solution(blob_name: str) -> bool:
-    """Check if the path indicates a solution/correction document.
-
-    Detection strategy:
-      1. Filename-level: look for _sol or _corr markers in the filename
-         itself (handles both ``S1_EX1_sol_1.jpg.tex`` and
-         ``S1_Ex1_sol (2).tex``).
-      2. Path-level: explicit solution sub-folders (``_Sol/``, ``/sol/``)
-         or the ``Bac_avec_corrections_Images/`` tree.
-
-    NOTE: We intentionally do NOT match the word "correction" in the full
-    path because the folder ``series_et_corrections/`` contains both
-    exercises and solutions — matching on the folder name would flag
-    every file as a solution.
-    """
+    """Check if the path indicates a solution/correction document."""
     n = blob_name.lower()
     filename = os.path.basename(n)
 
@@ -237,17 +202,7 @@ def detect_is_solution(blob_name: str) -> bool:
 
 
 def extract_exercise_key(blob_name: str) -> str:
-    """Extract a normalised exercise identifier from series filenames.
-
-    Handles both naming conventions:
-      New:  S1_EX1_enonce_1.jpeg.tex  →  S1_EX1
-            S1_EX1_sol_2.jpg.tex      →  S1_EX1
-      Old:  S1_Ex1.tex                →  S1_EX1
-            S1_Ex1_sol.tex            →  S1_EX1
-            S1_Ex1_sol (2).tex        →  S1_EX1
-
-    Returns an uppercase key like ``S1_EX1`` or empty string if no match.
-    """
+    """Extract exercise key like 'S1_EX1' from series filenames."""
     filename = os.path.basename(blob_name)
     m = re.search(r"(S\d+_EX?\d+)", filename, re.IGNORECASE)
     if m:
@@ -256,13 +211,7 @@ def extract_exercise_key(blob_name: str) -> str:
 
 
 def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
-    """Extract year, session, exercise number from bac-style folder names.
-
-    Handles patterns like:
-      Bac2010_cont_Ex3_Sol/
-      Bac2010_princ_Ex1/
-      Bac2022_Ex2_Sol/
-    """
+    """Extract year, session, exo_id from bac-style folder names."""
     tokens = {"year": "", "session": "", "exo_id": ""}
 
     # Full pattern: BacYYYY_(princ|cont)_ExN
@@ -294,10 +243,7 @@ def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
 
 
 def extract_group_id(blob_name: str) -> str:
-    """Group ID = nearest parent folder containing BacYYYY or a meaningful name.
-
-    Used to link exercise + solution chunks from the same parent folder.
-    """
+    """Group ID from nearest parent folder (links exercise + solution chunks)."""
     parts = [p for p in blob_name.split("/") if p]
     if len(parts) >= 2:
         parent = parts[-2]

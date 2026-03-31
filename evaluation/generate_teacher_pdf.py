@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 """
-generate_teacher_pdf.py
------------------------
-Generates printable HTML files (with MathJax-rendered LaTeX) from the blind
-grading JSON files. The teacher opens the HTML in a browser and prints to PDF.
-
-Produces 2 files:
-  1. teacher_grading_sheet.html  — Answers + scoring tables for 15 graded questions
-  2. teacher_guardrail_sheet.html — Answers + PASS/FAIL for 4 out-of-scope questions
-
-Usage:
-  python evaluation/generate_teacher_pdf.py
-  python evaluation/generate_teacher_pdf.py --results-dir evaluation/results
+Generates printable HTML grading sheets with MathJax rendering for the teacher.
 """
 
 import argparse

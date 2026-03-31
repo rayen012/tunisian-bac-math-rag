@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 """
-run_evaluation.py
------------------
-Run all evaluation questions through all three systems (RAG, Prompt-Only, Hybrid).
-
-Outputs:
-  evaluation/results/eval_results_YYYYMMDD_HHMMSS.json
-    → Full structured results for every question × every system.
-
-Usage:
-  python evaluation/run_evaluation.py                    # run all 20 questions
-  python evaluation/run_evaluation.py --category A       # run only category A
-  python evaluation/run_evaluation.py --ids A01 B03 E01  # run specific questions
-  python evaluation/run_evaluation.py --dry-run           # show questions without calling APIs
+Runs all 20 questions through RAG, Prompt-Only, and Hybrid, saves results as JSON.
 """
 
 import argparse

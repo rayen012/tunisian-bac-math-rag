@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 """
-analyze_grades.py
------------------
-After your teacher has filled in grading_template.json and
-guardrail_evaluation.json, run this script to unblind and analyze.
-
-Outputs:
-  - Per-system average scores across 4 criteria (0-5 each)
-  - Simple mean per system (unweighted average of 4 criteria)
-  - Per-category breakdown (A vs B vs C vs D)
-  - LaTeX-ready comparison table for thesis
-  - Guardrail pass/fail summary (unblinded)
-
-Usage:
-  python evaluation/analyze_grades.py
-  python evaluation/analyze_grades.py --grades evaluation/results/grading_template.json
+Unblinds teacher grades and computes per-system/per-category averages.
 """
 
 import argparse

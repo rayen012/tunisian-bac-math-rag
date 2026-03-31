@@ -1,24 +1,6 @@
-# Tunisian Bac Math RAG — Python dependencies
-# Install: pip install -r requirements.txt
-
-# Google Cloud
 google-cloud-storage==3.10.1
 google-cloud-aiplatform==1.142.0
-
-# Vertex AI / Gemini (installed via google-cloud-aiplatform)
-# vertexai is part of google-cloud-aiplatform — no separate pin needed
-
-# Vector DB
 chromadb==1.5.5
-
-# Embeddings (BGE-M3)
 FlagEmbedding==1.3.5
-
-# ML / Numeric (required by FlagEmbedding and config.py GPU detection)
 torch==2.10.0
-
-# Numeric (used in evaluation scripts)
 numpy
-
-# UI (Streamlit apps: app.py, app_prompt_only.py, app_hybrid.py)
-streamlit==1.55.0

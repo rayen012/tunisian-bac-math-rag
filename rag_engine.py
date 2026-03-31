@@ -1,37 +1,5 @@
 """
-rag_engine.py
--------------
-Core RAG pipeline separated from the Streamlit UI.
-
-Architecture:
-  1. TWO-STAGE RETRIEVAL
-     - First pass: search corrections from series and Bac exams
-       (is_solution=true) — the "mimicry" sources that define the
-       redaction style.
-     - If best distance > threshold → second pass: search course material
-       (cours) for theorem backing.
-     - This ensures the LLM always has style exemplars when available,
-       and falls back to course theory when no similar exercise exists.
-
-  2. SIMILARITY THRESHOLDING
-     - Documents above SIMILARITY_FALLBACK_THRESHOLD are discarded entirely
-       to avoid injecting irrelevant noise into the prompt.
-
-  3. PROMPT COMPILER
-     - System persona "Monsieur Tounsi" with syllabus guard, mimicry
-       decision tree, Derja sandwich, and anti-injection rules.
-     - User prompt includes mode (correction vs coaching), context blocks,
-       and explicit source-citation instructions.
-
-  4. RETRY with exponential backoff for Gemini calls.
-
-  5. OBSERVABILITY
-     - Every call returns a QueryResult dataclass with timings, distances,
-       selected docs, and the final answer — so the UI or a test harness
-       can inspect everything.
-
-This module is UI-agnostic: it can be used from Streamlit, Gradio, a
-notebook, or a CLI test script.
+RAG engine: two-stage retrieval + prompt compilation + Gemini generation.
 """
 
 import time
@@ -148,21 +116,11 @@ class TunisianMathRAG:
     # Retrieval
     # ──────────────────────────────────────────
 
-    # Over-fetch multiplier: retrieve this many unfiltered results, then
-    # filter in Python.  Avoids ChromaDB HNSW/SQLite desync crashes on
-    # filtered queries (known issue with delete+upsert cycles).
-    # At ~2k chunks the cost difference is negligible (single-digit ms).
-    _OVERFETCH_N = 50
+    _OVERFETCH_N = 50  # over-fetch then filter in Python (avoids ChromaDB desync bugs)
 
     @staticmethod
     def _matches_filter(meta: Dict, where_filter: Optional[Dict]) -> bool:
-        """Evaluate a ChromaDB-style where filter against a metadata dict.
-
-        Supports the subset of ChromaDB filter syntax we actually use:
-          - {"field": "value"}           → exact match
-          - {"field": {"$in": [...]}}    → membership
-          - {"$and": [...]}              → conjunction
-        """
+        """Evaluate a ChromaDB-style where filter in Python."""
         if where_filter is None:
             return True
 
@@ -195,12 +153,7 @@ class TunisianMathRAG:
         n_results: int,
         where_filter: Optional[Dict] = None,
     ) -> List[RetrievedDoc]:
-        """Retrieve docs by semantic similarity with optional metadata filtering.
-
-        Strategy: always query ChromaDB WITHOUT a where clause (immune to
-        HNSW/SQLite desync), then post-filter in Python.  At our DB size
-        (~2k chunks) the performance difference is zero.
-        """
+        """Semantic search with optional metadata filtering (post-filter in Python)."""
         fetch_n = max(n_results, self._OVERFETCH_N) if where_filter else n_results
 
         try:
@@ -246,19 +199,7 @@ class TunisianMathRAG:
     def _fetch_exercise_companions(
         self, correction_docs: List[RetrievedDoc],
     ) -> List[RetrievedDoc]:
-        """For selected correction docs, fetch matching exercise statements.
-
-        Two matching strategies:
-          1. **Bac exercises**: match on (chapter + type + year + exo_id)
-          2. **Series exercises**: match on (chapter + exercise_key)
-             where exercise_key is e.g. "S1_EX1" — works for both old
-             and new naming conventions.
-
-        Uses collection.get() (SQLite metadata lookup, not HNSW) so it's
-        immune to the desync issue and very fast.
-
-        Returns exercise chunks ordered by (group_key, chunk_index).
-        """
+        """For corrections, fetch the matching exercise statements."""
         seen_keys: set = set()
         companions: list = []
 
@@ -343,15 +284,7 @@ class TunisianMathRAG:
 
     @staticmethod
     def _dominant_chapters(docs: List[RetrievedDoc], max_chapters: int = 2) -> List[str]:
-        """Extract the most frequent chapter(s) from a set of retrieved docs.
-
-        Used to scope the second-pass (cours) retrieval so that only
-        chapter-relevant theory is injected — avoids dragging in unrelated
-        material (e.g. Nombres complexes when the question is about limits).
-
-        Returns up to `max_chapters` chapter names, ordered by frequency
-        then by best distance (tie-break).
-        """
+        """Most frequent chapter(s) from retrieved docs, for scoping the second pass."""
         from collections import Counter
 
         chapter_best_dist: dict = {}   # chapter → best distance seen
@@ -376,18 +309,7 @@ class TunisianMathRAG:
         return ranked[:max_chapters]
 
     def _two_stage_retrieve(self, query: str) -> tuple:
-        """Two-stage retrieval: corrections first, then course-material fallback.
-
-        Improvements over naive retrieval:
-          - First pass targets correction-style docs (bac_officiel / serie / exercice
-            with is_solution=true) to find style exemplars.
-          - Second pass targets cours material, SCOPED to the chapter(s) identified
-            in the first pass.  This prevents injecting theory from unrelated
-            chapters (e.g. complex numbers when the question is about limits).
-          - Exercise companion fetching pairs corrections with their statements.
-
-        Returns (selected_docs, first_pass, second_pass, case).
-        """
+        """First pass: corrections. Second pass: course material scoped by chapter."""
         # ── First pass: corrections from Bac exams, series, and exercises ──
         first_pass = self._retrieve(
             query,

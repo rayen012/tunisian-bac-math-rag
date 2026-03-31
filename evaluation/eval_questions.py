@@ -1,33 +1,9 @@
 """
-eval_questions.py
------------------
-Structured evaluation question bank for the Bachelor thesis.
-
-20 questions across 5 categories, covering 15+ chapters of the Tunisian
-Baccalaureate mathematics program (Section Mathématiques).
-
-Categories:
-  A — Direct Bac-style (questions close to what exists in the corpus)
-  B — Novel chapter-based (same topics, different problems)
-  C — Student-style informal (how a real student would ask)
-  D — Derja / mixed-language (Tunisian dialect)
-  E — Out-of-scope / guardrail (should refuse or stay in bounds)
-
-Each question has:
-  - id:       Unique identifier (e.g., "A01")
-  - category: One of A/B/C/D/E
-  - chapter:  Bac Math chapter name
-  - mode:     "correction" or "coaching"
-  - question: The question text (French, Derja, or mixed)
-  - notes:    What this question is designed to test
+20 evaluation questions across 5 categories (A-E) for the thesis.
 """
 
 EVAL_QUESTIONS = [
-    # =========================================================================
-    #  CATEGORY A — Direct Bac-style questions
-    #  Purpose: These resemble real Bac exam questions. The RAG system SHOULD
-    #  find matching corrections in the corpus. Tests retrieval precision.
-    # =========================================================================
+    # Category A — Direct Bac-style
     {
         "id": "A01",
         "category": "A",
@@ -86,11 +62,7 @@ EVAL_QUESTIONS = [
         "notes": "First-order linear ODE with initial condition. Standard Bac format.",
     },
 
-    # =========================================================================
-    #  CATEGORY B — Novel chapter-based questions
-    #  Purpose: Same Bac topics but problems NOT copied from the corpus.
-    #  Tests whether the system can generalize from retrieved examples.
-    # =========================================================================
+    # Category B — Novel chapter-based
     {
         "id": "B01",
         "category": "B",
@@ -156,12 +128,7 @@ EVAL_QUESTIONS = [
         "notes": "Novel divisibility proof. Tests arithmetic reasoning, not in corpus verbatim.",
     },
 
-    # =========================================================================
-    #  CATEGORY C — Student-style informal questions
-    #  Purpose: How a real Tunisian student would actually type a question.
-    #  Informal French, incomplete phrasing, possibly vague.
-    #  Tests robustness and pedagogical quality (coaching mode).
-    # =========================================================================
+    # Category C — Student-style informal
     {
         "id": "C01",
         "category": "C",
@@ -196,12 +163,7 @@ EVAL_QUESTIONS = [
         "notes": "Student confusion about chain rule in integration. Tests targeted coaching.",
     },
 
-    # =========================================================================
-    #  CATEGORY D — Derja / mixed-language questions
-    #  Purpose: Tunisian students often mix French and Derja (Tunisian Arabic).
-    #  Tests multilingual robustness and the BGE-M3 embedding model's ability
-    #  to handle code-switching.
-    # =========================================================================
+    # Category D — Derja / mixed-language
     {
         "id": "D01",
         "category": "D",
@@ -225,12 +187,7 @@ EVAL_QUESTIONS = [
         "notes": "Derja asking about exponential form of complex numbers. Tests language robustness.",
     },
 
-    # =========================================================================
-    #  CATEGORY E — Out-of-scope / guardrail questions
-    #  Purpose: Methods OUTSIDE the Tunisian Bac program. All three systems
-    #  should refuse or explicitly flag that the method is hors programme.
-    #  Tests curriculum boundary enforcement.
-    # =========================================================================
+    # Category E — Out-of-scope / guardrail
     {
         "id": "E01",
         "category": "E",

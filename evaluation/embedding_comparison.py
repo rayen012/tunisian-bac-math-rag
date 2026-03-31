@@ -1,25 +1,6 @@
 #!/usr/bin/env python3
 """
-embedding_comparison.py
------------------------
-Compare BGE-M3 (local) vs Google text-embedding (Vertex AI) for retrieval
-quality on the Tunisian Bac Math corpus.
-
-Experiment:
-  1. Embed the 16 graded evaluation questions (A-D) with both models.
-  2. For each query, retrieve top-k from ChromaDB (BGE-M3) and from a
-     temporary Google-embedding collection.
-  3. Compare: L2 distance distributions, overlap in retrieved docs,
-     per-category retrieval quality.
-
-Output:
-  evaluation/results/embedding_comparison_YYYYMMDD_HHMMSS.json
-  Console tables + LaTeX-ready comparison table.
-
-Usage:
-  python evaluation/embedding_comparison.py
-  python evaluation/embedding_comparison.py --k 10
-  python evaluation/embedding_comparison.py --dry-run
+Compares BGE-M3 vs Google text-embedding-005 on the same queries and corpus.
 """
 
 import argparse
@@ -44,12 +25,7 @@ from evaluation.eval_questions import EVAL_QUESTIONS
 # ── Google Vertex AI Embedding ──────────────────────────────────────────────
 
 
-# Google text-embedding-005 accepts up to 20,000 tokens per input.
-# A safe character limit (~4 chars/token on average for French+LaTeX) ensures
-# no single text exceeds the API ceiling.  This is analogous to BGE-M3's own
-# max_length=8192 tokens — both models see bounded input, keeping the
-# comparison fair.
-GOOGLE_MAX_CHARS = 10_000  # ~2,500 tokens margin below the 20k-token limit
+GOOGLE_MAX_CHARS = 10_000
 
 
 def _truncate_for_google(texts: list[str]) -> list[str]:

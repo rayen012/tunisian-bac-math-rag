@@ -1,60 +1,6 @@
 """
-hybrid_engine.py
-----------------
-Hybrid RAG + Prompt-Only engine for the Tunisian Bac Math AI Tutor.
-
-PURPOSE:
-  Third experimental system for the Bachelor thesis.  Combines RAG retrieval
-  (BGE-M3 + ChromaDB) with Prompt-Only curriculum knowledge, routing each
-  query to the most appropriate strategy based on retrieval quality.
-
-ARCHITECTURE — THREE-CASE ROUTER:
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  Student Question                                               │
-  │        │                                                        │
-  │        ▼                                                        │
-  │  BGE-M3 Embedding + Two-Stage Retrieval (from rag_engine)       │
-  │        │                                                        │
-  │        ▼                                                        │
-  │  ┌─────────────────────────────────────┐                        │
-  │  │     Retrieval Quality Router        │                        │
-  │  │                                     │                        │
-  │  │  best_dist ≤ 1.2  → CASE A         │  Strong retrieval      │
-  │  │  1.2 < dist ≤ 1.6 → CASE B         │  Weak retrieval        │
-  │  │  dist > 1.6       → CASE C         │  No useful retrieval   │
-  │  └─────────────────────────────────────┘                        │
-  │        │                                                        │
-  │        ▼                                                        │
-  │  Case-specific prompt assembly → Gemini generation              │
-  └──────────────────────────────────────────────────────────────────┘
-
-CASE DETAILS:
-  Case A (Strong Retrieval):
-    - RAG-style prompt with retrieved context as PRIMARY knowledge source
-    - Anti-hallucination rules: "use ONLY the provided context"
-    - Confidence can be "fort" if context is rich enough
-
-  Case B (Weak Retrieval — the novel hybrid contribution):
-    - Merged prompt: retrieved context + Prompt-Only curriculum knowledge
-    - LLM is told to use context where available, complement with curriculum
-    - Must signal what comes from sources vs. parametric knowledge
-    - Confidence capped at "moyen"
-
-  Case C (No Useful Retrieval):
-    - Pure Prompt-Only fallback (full curriculum in prompt)
-    - Self-verification blocks, hallucination control
-    - No context block
-
-FAIR COMPARISON WITH RAG AND PROMPT-ONLY:
-  - Same Vertex AI Gemini model (same temperature, same max_tokens)
-  - Same output format (6-part structure)
-  - Same Derja sandwich tone
-  - Same syllabus guard
-  - Same mode switch (correction / coaching)
-  - Compatible result dataclass for evaluation
-
-This module composes rag_engine.py (for retrieval) and prompt_only_engine.py
-(for curriculum prompts), without modifying either.
+Hybrid engine: routes each query to RAG, mixed, or prompt-only based on
+retrieval quality (Case A/B/C). Composes rag_engine + prompt_only_engine.
 """
 
 import time
@@ -78,16 +24,8 @@ from rag_engine import TunisianMathRAG, RetrievedDoc
 logger = setup_logging("hybrid_engine")
 
 
-# ══════════════════════════════════════════════
-# Data structures
-# ══════════════════════════════════════════════
 @dataclass
 class HybridResult:
-    """Full result of a hybrid query, for observability.
-
-    Superset of both QueryResult and PromptOnlyResult fields,
-    so evaluation code can handle all three systems uniformly.
-    """
     question: str
     mode: str
     answer: str = ""
@@ -109,11 +47,6 @@ class HybridResult:
     system_prompt_tokens_approx: int = 0
     user_prompt_tokens_approx: int = 0
 
-
-# ══════════════════════════════════════════════
-# Curriculum knowledge for Case B & C
-# (imported from prompt_only_engine concepts)
-# ══════════════════════════════════════════════
 
 _CURRICULUM_KNOWLEDGE = """
 INVENTAIRE DU PROGRAMME PAR CHAPITRE (Bac Tunisien — Section Mathématiques) :
@@ -175,10 +108,6 @@ Si l'élève demande une méthode hors programme :
 → Propose l'alternative compatible Bac tunisien
 """
 
-
-# ══════════════════════════════════════════════
-# System prompts for each case
-# ══════════════════════════════════════════════
 
 _SYSTEM_PROMPT_CASE_A = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé Baccalauréat (Section Maths).
 
@@ -318,12 +247,7 @@ POLITIQUE DE REFUS :
 REFUSE poliment si la question n'est PAS liée aux mathématiques du Bac tunisien."""
 
 
-# ══════════════════════════════════════════════
-# User prompt templates
-# ══════════════════════════════════════════════
-
 def _build_user_prompt_case_a(mode: str, question: str, context: str, rag_case: str) -> str:
-    """User prompt for Case A: strong retrieval (identical to rag_engine)."""
     if mode == "correction":
         mode_block = (
             "MODE: CORRECTION TYPE BAC\n"
@@ -364,7 +288,6 @@ CONSIGNES FINALES:
 
 
 def _build_user_prompt_case_b(mode: str, question: str, context: str) -> str:
-    """User prompt for Case B: weak retrieval + curriculum complement."""
     if mode == "correction":
         mode_block = (
             "MODE: CORRECTION TYPE BAC\n"
@@ -401,7 +324,6 @@ CONSIGNES FINALES:
 
 
 def _build_user_prompt_case_c(mode: str, question: str) -> str:
-    """User prompt for Case C: no retrieval, pure prompt-only."""
     if mode == "correction":
         return f"""MODE : CORRECTION TYPE BAC
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -438,11 +360,7 @@ QUESTION DE L'ÉLÈVE :
 {question}"""
 
 
-# ══════════════════════════════════════════════
-# Engine class
-# ══════════════════════════════════════════════
 class TunisianMathHybrid:
-    """Hybrid RAG + Prompt-Only engine. Mirrors TunisianMathRAG's API."""
 
     def __init__(self, model_id: str = None):
         logger.info("Initializing TunisianMathHybrid engine...")
@@ -476,14 +394,7 @@ class TunisianMathHybrid:
     # ──────────────────────────────────────────
     @staticmethod
     def _route_case(selected_docs: List[RetrievedDoc]) -> str:
-        """Determine routing case based on retrieval quality.
-
-        Ignores companion docs (distance < 0) which are fetched via
-        metadata lookup, not similarity search — their synthetic distance
-        must not influence routing decisions.
-
-        Returns "A", "B", or "C".
-        """
+        """Returns 'A', 'B', or 'C' based on best retrieval distance."""
         if not selected_docs:
             return "C"
 
@@ -522,7 +433,6 @@ class TunisianMathHybrid:
 
     @staticmethod
     def _estimate_confidence_prompt_only(question: str) -> str:
-        """Heuristic confidence without retrieval (mirrors prompt_only_engine)."""
         q = question.lower()
         high_keywords = [
             "récurrence", "recurrence", "limite", "dérivée", "derivee",
@@ -541,7 +451,6 @@ class TunisianMathHybrid:
     # Generation with retry
     # ──────────────────────────────────────────
     def _generate(self, system_prompt: str, user_prompt: str, retries: int = 3) -> str:
-        """Generate with exponential-backoff retry (identical to rag_engine)."""
         last_err = None
         for attempt in range(1, retries + 1):
             try:

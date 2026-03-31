@@ -1,25 +1,6 @@
 #!/usr/bin/env python3
 """
-generate_grading_sheets.py
---------------------------
-Takes evaluation results JSON and produces:
-  1. blind_grading_sheet.json  — Anonymized answers (Système X/Y/Z) for teachers
-  2. answer_key.json           — Reveals which system is which (keep SECRET)
-  3. grading_template.json     — Pre-filled template with empty scores for teachers
-  4. guardrail_evaluation.json — Blind pass/fail for out-of-scope questions
-
-All outputs are fully blind: teachers never see system names (RAG, Prompt-Only,
-Hybrid). The answer key maps Système X/Y/Z back to real names for analysis.
-
-Grading rubric: 4 criteria, each scored 0–5, equally weighted.
-  1. mathematical_correctness
-  2. reasoning_clarity
-  3. pedagogical_quality
-  4. bac_style_adherence
-
-Usage:
-  python evaluation/generate_grading_sheets.py
-  python evaluation/generate_grading_sheets.py --input evaluation/results/eval_results_latest.json
+Generates blind grading materials (Systeme X/Y/Z) from evaluation results.
 """
 
 import argparse

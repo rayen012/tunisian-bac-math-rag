@@ -1,25 +1,12 @@
 #!/usr/bin/env python3
 """
-digitize.py
------------
-Scan a Google Cloud Storage bucket for raw PDFs/images and transcribe them
-into LaTeX using Vertex AI Gemini (multimodal).  Saves .tex files back to
-the same bucket path.
-
-Improvements over v1:
-  - Cost-safe: skips files that already have a .tex companion
-  - Resume-friendly: failures are logged to a JSONL report so you can
-    inspect and retry only what failed
-  - Batch-aware: --max_files + --start_after for paginated runs
-  - Structured logging with timing
-  - Model selection without wasteful "ping" calls
-  - Clean LaTeX prompt with explicit math environments
+Scans a GCS bucket for raw PDFs/images and transcribes them into LaTeX
+using Vertex AI Gemini (multimodal). Saves .tex files back to GCS.
 
 Usage:
-  python digitize.py                        # process all pending
-  python digitize.py --max_files 50         # first 50 pending files
-  python digitize.py --dry_run              # list pending, don't call API
-  python digitize.py --report failures.jsonl  # custom failure report path
+  python digitize.py                  # process all pending
+  python digitize.py --max_files 50   # first 50 pending files
+  python digitize.py --dry_run        # list pending, don't call API
 """
 
 import argparse
@@ -43,10 +30,9 @@ from config import (
 
 logger = setup_logging("digitize")
 
-# Substrings in paths to skip (virtual envs, caches)
+# Skip these paths
 SKIP_SUBSTRINGS = [".venv", "__pycache__", ".git"]
 
-# Default failure report path
 DEFAULT_REPORT_PATH = "digitize_failures.jsonl"
 
 
@@ -86,16 +72,7 @@ def _guess_content_type(blob_name: str, blob_ct: Optional[str]) -> str:
 
 
 def _tex_companion_names(raw_name: str) -> list:
-    """Return all possible .tex companion paths for a raw file.
-
-    Older digitized files may exist as 'image.tex' while newer ones
-    are saved as 'image.png.tex'.  We must check both conventions to
-    avoid re-digitizing files that were already processed.
-
-    Returns:
-        List of candidate .tex blob names (2 entries, may overlap if
-        the raw file has no extension — deduplication is harmless).
-    """
+    """Both old (image.tex) and new (image.png.tex) naming conventions."""
     stem, _ = os.path.splitext(raw_name)
     return [
         raw_name + ".tex",       # new convention: image.png.tex
@@ -104,11 +81,7 @@ def _tex_companion_names(raw_name: str) -> list:
 
 
 def _tex_upload_name(raw_name: str) -> str:
-    """The .tex name to use when uploading a NEW transcription.
-
-    Always uses the new convention (raw_name + '.tex') so that future
-    runs detect it regardless of which check they use.
-    """
+    """New convention: raw_name + '.tex'."""
     return raw_name + ".tex"
 
 
@@ -192,12 +165,9 @@ def _init_vertex():
 
 
 def _pick_model(candidates: List[str]) -> GenerativeModel:
-    """Select first available model. No wasteful ping — we just instantiate
-    and let the first real call validate availability."""
+    """Use first candidate model."""
     if not candidates:
         raise ValueError("No model candidates provided")
-    # Use the first candidate; if it fails on real calls we log the error.
-    # This avoids wasting API quota on ping calls.
     model_id = candidates[0]
     logger.info(f"Using transcription model: {model_id}")
     return GenerativeModel(model_id)

@@ -1,26 +1,7 @@
 #!/usr/bin/env python3
 """
-variable_sensitivity_probe.py
------------------------------
-Small experiment: does changing the sequence variable name (u_n → v_n, w_n)
-affect retrieval results?  If one embedding model retrieves completely
-different documents just because the letter changed, that model is too
-sensitive to superficial notation — a real problem for math tutoring where
-the same exercise type appears with different variable names.
-
-Metrics:
-  1. Distance delta  — |d(query_A) − d(query_B)| to the same top-1 doc.
-     Stable model → small delta.
-  2. Top-3 overlap   — do query_A and query_B retrieve the same 3 docs?
-     Stable model → high overlap.
-
-Output:
-  evaluation/results/variable_sensitivity_YYYYMMDD_HHMMSS.json
-  Console summary + LaTeX-ready table for the thesis.
-
-Usage:
-  python evaluation/variable_sensitivity_probe.py
-  python evaluation/variable_sensitivity_probe.py --dry-run
+Tests if swapping variable names (u_n -> v_n) changes retrieval results.
+Compares BGE-M3 vs Google embeddings on 6 query pairs.
 """
 
 import argparse

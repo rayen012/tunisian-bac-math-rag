@@ -1,29 +1,6 @@
 #!/usr/bin/env python3
 """
-ocr_ground_truth_eval.py
-------------------------
-Computes OCR quality metrics by comparing Gemini-digitized .tex files
-against manually corrected reference .tex files.
-
-Metrics computed:
-  1. CER  — Character Error Rate (Levenshtein distance / reference length)
-  2. WER  — Word Error Rate (word-level Levenshtein / reference word count)
-  3. LaTeX accuracy — Fraction of LaTeX math expressions preserved exactly
-
-Usage:
-  python evaluation/ocr_ground_truth_eval.py --samples-dir evaluation/ocr_ground_truth
-
-Expected directory structure:
-  evaluation/ocr_ground_truth/
-    sample_01/
-      ocr.tex         ← the Gemini OCR output (copy from GCS)
-      reference.tex   ← your manually corrected version
-    sample_02/
-      ocr.tex
-      reference.tex
-    ...
-
-The script prints per-file and aggregate metrics, plus a LaTeX-ready table.
+Measures OCR quality (CER, WER, LaTeX accuracy) against manually corrected references.
 """
 
 import argparse
