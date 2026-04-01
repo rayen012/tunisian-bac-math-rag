@@ -1,37 +1,7 @@
 """
-rag_engine.py
--------------
-Core RAG pipeline separated from the Streamlit UI.
-
-Architecture:
-  1. TWO-STAGE RETRIEVAL
-     - First pass: search corrections from series and Bac exams
-       (is_solution=true) — the "mimicry" sources that define the
-       redaction style.
-     - If best distance > threshold → second pass: search course material
-       (cours) for theorem backing.
-     - This ensures the LLM always has style exemplars when available,
-       and falls back to course theory when no similar exercise exists.
-
-  2. SIMILARITY THRESHOLDING
-     - Documents above SIMILARITY_FALLBACK_THRESHOLD are discarded entirely
-       to avoid injecting irrelevant noise into the prompt.
-
-  3. PROMPT COMPILER
-     - System persona "Monsieur Tounsi" with syllabus guard, mimicry
-       decision tree, Derja sandwich, and anti-injection rules.
-     - User prompt includes mode (correction vs coaching), context blocks,
-       and explicit source-citation instructions.
-
-  4. RETRY with exponential backoff for Gemini calls.
-
-  5. OBSERVABILITY
-     - Every call returns a QueryResult dataclass with timings, distances,
-       selected docs, and the final answer — so the UI or a test harness
-       can inspect everything.
-
-This module is UI-agnostic: it can be used from Streamlit, Gradio, a
-notebook, or a CLI test script.
+RAG engine: two-stage retrieval + prompt compilation + Gemini generation.
+This is the main retrieval-augmented system. It searches ChromaDB for relevant
+corrections and course material, then feeds them as context to Gemini.
 """
 
 import time
@@ -63,6 +33,8 @@ logger = setup_logging("rag_engine")
 # ══════════════════════════════════════════════
 # Embedding function (shared with build_db)
 # ══════════════════════════════════════════════
+# Singleton pattern: the embedding model is ~500MB, so we load it only once
+# and reuse it across all queries. Without this, each query would reload the model.
 class BGEM3EmbeddingFunction(EmbeddingFunction):
     _instance = None
 
@@ -148,21 +120,14 @@ class TunisianMathRAG:
     # Retrieval
     # ──────────────────────────────────────────
 
-    # Over-fetch multiplier: retrieve this many unfiltered results, then
-    # filter in Python.  Avoids ChromaDB HNSW/SQLite desync crashes on
-    # filtered queries (known issue with delete+upsert cycles).
-    # At ~2k chunks the cost difference is negligible (single-digit ms).
+    # Why over-fetch 50 then filter in Python: ChromaDB's built-in `where` filter
+    # sometimes misses documents due to index sync issues. Fetching more results
+    # and filtering ourselves is more reliable.
     _OVERFETCH_N = 50
 
     @staticmethod
     def _matches_filter(meta: Dict, where_filter: Optional[Dict]) -> bool:
-        """Evaluate a ChromaDB-style where filter against a metadata dict.
-
-        Supports the subset of ChromaDB filter syntax we actually use:
-          - {"field": "value"}           → exact match
-          - {"field": {"$in": [...]}}    → membership
-          - {"$and": [...]}              → conjunction
-        """
+        """Evaluate a ChromaDB-style where filter in Python."""
         if where_filter is None:
             return True
 
@@ -195,12 +160,7 @@ class TunisianMathRAG:
         n_results: int,
         where_filter: Optional[Dict] = None,
     ) -> List[RetrievedDoc]:
-        """Retrieve docs by semantic similarity with optional metadata filtering.
-
-        Strategy: always query ChromaDB WITHOUT a where clause (immune to
-        HNSW/SQLite desync), then post-filter in Python.  At our DB size
-        (~2k chunks) the performance difference is zero.
-        """
+        """Semantic search with optional metadata filtering (post-filter in Python)."""
         fetch_n = max(n_results, self._OVERFETCH_N) if where_filter else n_results
 
         try:
@@ -246,17 +206,11 @@ class TunisianMathRAG:
     def _fetch_exercise_companions(
         self, correction_docs: List[RetrievedDoc],
     ) -> List[RetrievedDoc]:
-        """For selected correction docs, fetch matching exercise statements.
-
-        Matches on (chapter + type + year + exo_id) with is_solution=false.
-        Uses collection.get() (SQLite metadata lookup, not HNSW) so it's
-        immune to the desync issue and very fast.
-
-        Returns exercise chunks ordered by (group_key, chunk_index).
-        """
-        # Deduplicate: one lookup per unique (chapter, type, year, exo_id)
-        seen_keys = set()
-        companions = []
+        """For corrections, fetch the matching exercise statements.
+        Why: if we found a correction for Bac2023_Ex2, we also want the exercise
+        statement so Gemini sees the full problem+solution pair, not just the answer."""
+        seen_keys: set = set()
+        companions: list = []
 
         for doc in correction_docs:
             m = doc.metadata
@@ -264,29 +218,46 @@ class TunisianMathRAG:
             dtype = m.get("type", "")
             year = m.get("year", "")
             exo_id = m.get("exo_id", "")
+            exercise_key = m.get("exercise_key", "")
 
-            # Need at least chapter + one identifier to match reliably
-            if not chapter or (not year and not exo_id):
+            if not chapter:
                 continue
 
-            key = (chapter, dtype, year, exo_id)
-            if key in seen_keys:
+            # ── Strategy 1: series with exercise_key ───────────
+            if exercise_key and dtype == "serie":
+                key = ("exkey", chapter, exercise_key)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                where = {"$and": [
+                    {"is_solution": "false"},
+                    {"chapter": chapter},
+                    {"exercise_key": exercise_key},
+                ]}
+
+            # ── Strategy 2: bac with year/exo_id ──────────────
+            elif year or exo_id:
+                key = ("bac", chapter, dtype, year, exo_id)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                clauses = [
+                    {"is_solution": "false"},
+                    {"chapter": chapter},
+                ]
+                if dtype:
+                    clauses.append({"type": dtype})
+                if year:
+                    clauses.append({"year": year})
+                if exo_id:
+                    clauses.append({"exo_id": exo_id})
+                where = {"$and": clauses}
+
+            else:
+                # No identifiers to match on — skip
                 continue
-            seen_keys.add(key)
-
-            # Build where filter for the exercise (non-solution) counterpart
-            clauses = [
-                {"is_solution": "false"},
-                {"chapter": chapter},
-            ]
-            if dtype:
-                clauses.append({"type": dtype})
-            if year:
-                clauses.append({"year": year})
-            if exo_id:
-                clauses.append({"exo_id": exo_id})
-
-            where = {"$and": clauses}
 
             try:
                 results = self.collection.get(
@@ -320,18 +291,45 @@ class TunisianMathRAG:
 
         return companions
 
-    def _two_stage_retrieve(self, query: str) -> tuple:
-        """Two-stage retrieval: corrections first, then course-material fallback.
+    @staticmethod
+    def _dominant_chapters(docs: List[RetrievedDoc], max_chapters: int = 2) -> List[str]:
+        """Most frequent chapter(s) from retrieved docs, for scoping the second pass."""
+        from collections import Counter
 
-        Returns (selected_docs, first_pass, second_pass, case).
-        """
-        # ── First pass: corrections from Bac exams and exercise series (solutions) ──
+        chapter_best_dist: dict = {}   # chapter → best distance seen
+        chapter_count: Counter = Counter()
+
+        for d in docs:
+            ch = d.metadata.get("chapter", "")
+            if not ch or ch == "Inconnu":
+                continue
+            chapter_count[ch] += 1
+            if ch not in chapter_best_dist or d.distance < chapter_best_dist[ch]:
+                chapter_best_dist[ch] = d.distance
+
+        if not chapter_count:
+            return []
+
+        # Sort by (count DESC, best_distance ASC)
+        ranked = sorted(
+            chapter_count.keys(),
+            key=lambda ch: (-chapter_count[ch], chapter_best_dist.get(ch, 999)),
+        )
+        return ranked[:max_chapters]
+
+    def _two_stage_retrieve(self, query: str) -> tuple:
+        """Two-stage retrieval — the core of the RAG engine.
+        1st pass: search corrections (is_solution=true) for redaction style exemplars.
+        2nd pass: search course material, scoped to the chapter(s) found in pass 1.
+        Why two passes: corrections give the answer style, course material gives
+        the theoretical backing (theorems, properties). Both are needed."""
+        # ── First pass: corrections from Bac exams, series, and exercises ──
         first_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_FIRST_PASS,
             where_filter={
                 "$and": [
-                    {"type": {"$in": ["bac_officiel", "serie"]}},
+                    {"type": {"$in": ["bac_officiel", "serie", "exercice"]}},
                     {"is_solution": "true"},
                 ]
             },
@@ -350,11 +348,25 @@ class TunisianMathRAG:
             paired = companions + selected  # exercises first, then corrections
             return paired, first_pass, [], "A"
 
-        # ── Second pass: course material (cours) ──
+        # ── Identify dominant chapter(s) from first-pass results ──
+        good_first = [d for d in first_pass if d.distance <= SIMILARITY_FALLBACK_THRESHOLD]
+        chapters = self._dominant_chapters(good_first) if good_first else []
+
+        # ── Second pass: course material (cours), scoped to relevant chapters ──
+        if chapters:
+            if len(chapters) == 1:
+                cours_filter = {"$and": [{"type": "cours"}, {"chapter": chapters[0]}]}
+            else:
+                cours_filter = {"$and": [{"type": "cours"}, {"chapter": {"$in": chapters}}]}
+            logger.info(f"Second pass scoped to chapter(s): {chapters}")
+        else:
+            cours_filter = {"type": "cours"}
+            logger.info("Second pass unscoped (no dominant chapter from first pass)")
+
         second_pass = self._retrieve(
             query,
             n_results=RETRIEVE_K_SECOND_PASS,
-            where_filter={"type": "cours"},
+            where_filter=cours_filter,
         )
         best_second = second_pass[0].distance if second_pass else float("inf")
         logger.info(f"Second pass (cours): {len(second_pass)} docs, best_dist={best_second:.3f}")
@@ -548,7 +560,7 @@ CONSIGNES FINALES:
                 resp = self.model.generate_content(
                     system_prompt + "\n\n" + user_prompt,
                     generation_config=GenerationConfig(
-                        temperature=0.15,
+                        temperature=0.15,    # low but not 0: allows slight variation while staying faithful
                         max_output_tokens=4096,
                     ),
                 )
@@ -572,7 +584,7 @@ CONSIGNES FINALES:
 
         Args:
             question: Student's math question (French or Derja).
-            mode: "correction" for dry bac-style answer,
+            mode: "correction" for concise Bac-style answer,
                   "coaching" for pedagogical explanation.
 
         Returns:

@@ -1,0 +1,39 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel} % Pour la typographie française et la coupure des mots
+\usepackage{amsmath, amssymb} % Pour les symboles mathématiques comme \equiv, \pmod, \checkmark, \cases
+\usepackage{array} % Pour les tableaux
+\usepackage{geometry} % Pour ajuster les marges
+
+% Réglage des marges pour un aspect similaire à l'original
+\geometry{a4paper, left=2cm, right=2cm, top=2cm, bottom=2cm}
+
+% Commande personnalisée pour les lignes avec coche, afin de gérer l'indentation et le style
+\newcommand{\checkmarkline}[1]{\par\hspace{1.5em}\checkmark\quad \textit{#1}}
+
+\begin{document}
+
+\begin{enumerate}
+    \item \textbf{Vrai}. En effet : on sait que si $x$ est un entier, alors son reste modulo 2 est soit 0 soit 1:
+    \begin{center}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        Reste de $x \pmod 2$ & 0 & 1 \\
+        \hline
+        Reste de $x^3 \pmod 2$ & 0 & 1 \\
+        \hline
+    \end{tabular}
+    \end{center}
+    Il en résulte du tableau ci-dessus que $x^3 \equiv x \pmod 2$.
+    \checkmarkline{On pourrait envisager la justification suivante : $x^3 - x = x(x-1)(x+1)$ est toujours pair, par conséquent $x^3 \equiv x \pmod 2$.}
+
+    \item \textbf{Faux}. Car pour $x=2$, $2 \equiv 2 \pmod{14}$ et $2 \not\equiv 1 \pmod 7$.
+
+    \item \textbf{Vrai}. En effet : si $4x \equiv 10y \pmod 5$ alors $4x \equiv 0 \pmod 5$ et donc $x \equiv 0 \pmod 5$ ; car $4 \wedge 5 = 1$.
+    \checkmarkline{Il s'agit d'utiliser le lemme de Gauss : $\begin{cases} ax \equiv 0 \pmod b \\ b \text{ ne divise pas } a \end{cases}$ alors $x \equiv 0 \pmod b$.}
+
+    \item \textbf{Faux}. Car : pour $x=9$ et $y=5$, $8 \times 9 - 7 \times 5 = 47$.
+\end{enumerate}
+
+\end{document}

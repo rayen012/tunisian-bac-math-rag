@@ -1,0 +1,53 @@
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+\section{Summary}
+\label{sec:summary}
+
+This thesis presented and evaluated an AI tutor for the Tunisian
+Baccalaureate mathematics examination, with a particular focus on
+retrieval-augmented generation. The system included the full pipeline from
+document collection and digitization to indexing, retrieval, and answer
+generation. Three variants were compared: a RAG system grounded in
+retrieved documents, a prompt-only baseline without retrieval, and a hybrid
+system that adapted its behavior according to retrieval quality.
+The blind evaluation showed a result that differed from the initial
+expectation. The prompt-only baseline achieved the highest overall score
+(4.32/5), ahead of both the RAG system (3.22/5) and the hybrid system
+(3.25/5). All three systems passed the out-of-scope guardrail tests. The
+digitization pipeline also produced generally good OCR quality, with an
+average CER of 5.4\% and \LaTeX{} math expression accuracy of 97.1\%.
+
+The main conclusion is that retrieval was not automatically beneficial in
+this setting. Because the base model already had strong mathematical
+knowledge, and because the retrieval corpus remained relatively limited,
+careful prompt design proved more effective than retrieval-based grounding.
+More broadly, the results suggest that the usefulness of RAG in educational
+systems depends not only on the retrieval architecture, but also on corpus
+quality, corpus coverage, and the strength of the underlying model.
+
+\section{Future Work}
+\label{sec:future-work}
+
+Several directions could extend this work. The most important is corpus
+expansion. A larger and denser collection of past exams, exercise series,
+and corrections would make it more likely that retrieval finds genuinely
+relevant material instead of only approximate matches.
+A second direction is broader evaluation. Repeating the blind assessment
+with multiple teachers would make it possible to examine inter-rater
+agreement, while a larger question set would support a more stable
+comparison across categories.
+Another important step would be a student study. The current thesis
+evaluates answer quality from the perspective of an expert teacher, but not
+actual learning outcomes. Testing the system with Bac students would help
+determine whether the highest-rated answers also lead to better
+understanding and exam preparation.
+On the technical side, it would be useful to explore improved retrieval.
+This could include embedding fine-tuning on Tunisian Bac material, more
+precise retrieval calibration, or alternative ranking strategies designed to
+better distinguish between chapter-level similarity and true topical fit.
+Finally, the tutor could be made more interactive. Instead of only
+generating full corrections, a future version could guide the student
+step by step, react to partial attempts, and provide hints before revealing
+the final solution. This would move the system closer to a real tutoring
+assistant rather than a correction generator.

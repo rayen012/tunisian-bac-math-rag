@@ -1,0 +1,60 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath, amsfonts, amssymb}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\begin{document}
+
+\section*{Énoncé}
+
+\paragraph{Définition}
+Soit $f$ une fonction continue sur un intervalle $I$, $a$ et $b$ deux réels de $I$ et $F$ une primitive de $f$ sur $I$.
+On appelle intégrale de $f$ entre $a$ et $b$ le réel, noté $\int_a^b f(x)dx$, défini par $\int_a^b f(x)dx = F(b)-F(a)$.
+On note $\int_a^b f(x)dx = [F(x)]_a^b = F(b)-F(a)$.
+
+\paragraph{Propriétés}
+Soit $f$ une fonction continue sur un intervalle $I$, $a$, $b$ et $c$ des réels de $I$.
+\[
+\int_a^b \alpha dx = \alpha(b-a), \quad \alpha \in \mathbb{R}; \quad \int_a^a f(x)dx = 0; \quad \int_a^b f(x)dx = -\int_b^a f(x)dx; \quad \int_a^c f(x)dx + \int_c^b f(x)dx = \int_a^b f(x)dx.
+\]
+
+\paragraph{Théorème}
+Soit $f$ et $g$ deux fonctions continues sur un intervalle $I$, $a$ et $b$ deux réels de $I$.
+Pour tous réels $\alpha$ et $\beta$,
+\[
+\int_a^b (\alpha f(x)+\beta g(x))dx = \alpha \int_a^b f(x)dx + \beta \int_a^b g(x)dx.
+\]
+
+\paragraph{Théorème}
+Soit $f$ une fonction continue sur un intervalle $I$, $a$ et $b$ deux réels de $I$.
+\begin{itemize}
+    \item Si $f$ est positive sur $I$ et $a \le b$, alors $\int_a^b f(x)dx \ge 0$.
+    \item Si $f$ est négative sur $I$ et $a \le b$, alors $\int_a^b f(x)dx \le 0$.
+\end{itemize}
+
+\paragraph{Corollaire}
+Soit $f$ une fonction continue sur un intervalle $I$, $a$ et $b$ deux réels de $I$.
+\begin{itemize}
+    \item Si $\forall x \in I, g(x) \le f(x) \le h(x)$ et $a \le b$, alors $\int_a^b g(x)dx \le \int_a^b f(x)dx \le \int_a^b h(x)dx$.
+    \item Si $a \le b$, alors $\left|\int_a^b f(x)dx\right| \le \int_a^b |f(x)|dx$.
+\end{itemize}
+
+\paragraph{Théorème}
+Soit $f$ une fonction continue sur un intervalle $I$, $a$ et $b$ deux réels de $I$.
+Si $f$ est positive et ne s'annule qu'en un nombre fini de réels de $I$ et $a < b$ alors $\int_a^b f(x)dx > 0$.
+
+\paragraph{Théorème}
+Soit $u$ et $v$ deux fonctions dérivables sur $[a,b]$ et telles que leurs dérivées $u'$ et $v'$ sont continues sur $[a,b]$. Alors
+\[
+\int_a^b u(t)v'(t)dt = [u(t)v(t)]_a^b - \int_a^b u'(t)v(t)dt.
+\]
+
+\paragraph{Théorème}
+Le plan est muni d'un repère orthogonal.
+Soit $f$ et $g$ deux fonctions continues sur $[a,b]$.
+L'aire (en u.a) de la partie du plan limitée par la courbe de $f$, la courbe de $g$ et les droites d'équations $x=a$ et $x=b$ est le réel $\int_a^b |f(x)-g(x)|dx$.
+
+\end{document}

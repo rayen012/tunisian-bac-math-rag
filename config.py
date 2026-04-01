@@ -1,8 +1,5 @@
 """
-config.py
----------
-Shared configuration for the Tunisian Bac Math RAG system.
-All scripts import from here to avoid duplication and drift.
+Shared configuration for the whole project.
 """
 
 import os
@@ -35,58 +32,38 @@ USE_FP16 = torch.cuda.is_available()
 # ──────────────────────────────────────────────
 # Vertex AI LLM models
 # ──────────────────────────────────────────────
-# Default: gemini-2.0-flash (stable GA, reliable quotas)
-# Alternatives on Vertex AI:
-#   gemini-2.5-flash   — newer GA, faster, recommended upgrade path
-#   gemini-2.5-pro     — highest quality GA, higher cost
-#   gemini-2.0-flash   — current stable GA, retires June 2026
-# AVOID: *-exp / *-preview models have unstable backends (500s) and
-#         tiny rate limits (429s) — not suitable for batch evaluation.
 CHAT_MODEL_ID = os.getenv("CHAT_MODEL_ID", "gemini-2.5-flash")
 
-# Models to try for OCR/digitization (in order of preference)
-# Note: Gemini 1.5 models are retired (404). Gemini 2.0 retires March 31, 2026.
+# Models for OCR/digitization (in order of preference)
 TRANSCRIBE_MODEL_CANDIDATES = [
-    "gemini-3.1-pro-preview",
-    "gemini-3-pro",
-    "gemini-2.0-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
 ]
 
 # ──────────────────────────────────────────────
-# Chunking strategy (adaptive per document type)
+# Chunking (different sizes per document type)
 # ──────────────────────────────────────────────
-# Corrections/exercises: smaller chunks preserve exercise boundaries
-CHUNK_CORRECTION = {"size": 1500, "overlap": 200}
-# Course material (cours): larger chunks keep theorem context intact
-CHUNK_COURS = {"size": 3000, "overlap": 250}
-# Default fallback
+CHUNK_CORRECTION = {"size": 1500, "overlap": 200}  # corrections/exercises
+CHUNK_COURS = {"size": 3000, "overlap": 250}        # course material
 CHUNK_DEFAULT = {"size": 1800, "overlap": 200}
 
 # ──────────────────────────────────────────────
 # Retrieval parameters
 # ──────────────────────────────────────────────
-RETRIEVE_K_FIRST_PASS = 10   # corrections from Bac exams + series
-RETRIEVE_K_SECOND_PASS = 8   # course material (cours) fallback
-USE_TOP_N = 6                # max docs sent to LLM
+RETRIEVE_K_FIRST_PASS = 10
+RETRIEVE_K_SECOND_PASS = 8
+USE_TOP_N = 6
 MAX_CHARS_PER_DOC = 2000
 MAX_TOTAL_CONTEXT_CHARS = 14000
-# Minimum L2 distance below which we consider a match "good"
-# ChromaDB returns L2 distances; lower = better
-SIMILARITY_GOOD_THRESHOLD = 1.2
+SIMILARITY_GOOD_THRESHOLD = 1.2   # L2 distance: "good match"
 SIMILARITY_FALLBACK_THRESHOLD = 1.6
-# When a correction is retrieved, also fetch the matching exercise statement
-# so the LLM sees the full (exercise + correction) pair.
-RETRIEVE_K_COMPANIONS = 3  # max exercise chunks to fetch per correction group
+RETRIEVE_K_COMPANIONS = 3
 
 # ──────────────────────────────────────────────
-# Hybrid engine settings
+# Hybrid engine
 # ──────────────────────────────────────────────
-# The hybrid engine routes queries to one of three cases based on
-# retrieval quality (reuses existing thresholds):
-#   Case A: best_distance ≤ SIMILARITY_GOOD_THRESHOLD     → RAG-grounded
-#   Case B: GOOD < best_distance ≤ SIMILARITY_FALLBACK    → hybrid (RAG + curriculum)
-#   Case C: best_distance > SIMILARITY_FALLBACK or empty   → prompt-only fallback
-HYBRID_CASE_B_MAX_CONFIDENCE = "moyen"   # cap confidence when retrieval is weak
+HYBRID_CASE_B_MAX_CONFIDENCE = "moyen"
 
 # ──────────────────────────────────────────────
 # Supported file types for digitization

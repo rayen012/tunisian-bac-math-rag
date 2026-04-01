@@ -1,48 +1,9 @@
 """
-prompt_only_engine.py
----------------------
-Prompt-Engineering-Only baseline for the Tunisian Bac Math AI Tutor.
-
-PURPOSE:
-  Experimental comparison system for the Bachelor thesis.  This engine uses
-  ZERO retrieval — no embeddings, no ChromaDB, no external documents.
-  All domain knowledge comes from the LLM's parametric memory, guided by
-  a meticulously crafted prompt that encodes:
-
-    1. Tunisian Bac Math syllabus (Section Mathématiques)
-    2. Official redaction conventions and style
-    3. Chapter-by-chapter theorem inventory
-    4. Formal reasoning guardrails
-    5. Hallucination control via self-verification
-    6. Syllabus boundary enforcement
-    7. Confidence calibration without retrieval scores
-    8. Derja sandwich tone
-
-ARCHITECTURE (10 components — see thesis Chapter X):
-  ┌─────────────────────────────────────────────────────────┐
-  │  1. SYSTEM PROMPT — expert persona + curriculum encoding │
-  │  2. INSTRUCTION STRUCTURE — ordered task decomposition   │
-  │  3. REASONING GUARDRAILS — chain-of-thought enforcement  │
-  │  4. OUTPUT FORMATTING — 6-part official structure        │
-  │  5. HALLUCINATION CONTROL — self-check + uncertainty     │
-  │  6. SYLLABUS GUARD — forbidden methods list              │
-  │  7. SELF-VERIFICATION — "recheck your work" block        │
-  │  8. SELF-CHECK BLOCK — dimensional/boundary analysis     │
-  │  9. REFUSAL POLICY — out-of-scope detection              │
-  │ 10. CONFIDENCE CALIBRATION — explicit uncertainty levels  │
-  └─────────────────────────────────────────────────────────┘
-
-FAIR COMPARISON WITH RAG:
-  - Same Vertex AI Gemini model (same temperature, same max_tokens)
-  - Same output format (6-part structure)
-  - Same Derja sandwich tone
-  - Same syllabus guard
-  - Same mode switch (correction / coaching)
-  - Same QueryResult dataclass for evaluation
-  → Only difference: RAG has grounded context; this has embedded knowledge
-
-This module mirrors rag_engine.py's public API so that evaluation code
-(notebooks, Streamlit) can swap engines with a single import change.
+Prompt-only baseline: no retrieval, no database, no embeddings.
+All domain knowledge is encoded directly in the system prompt.
+Why this exists: to answer the question "does retrieval actually help,
+or is a good prompt enough?" Uses the same Gemini model + same temperature
+as RAG so the comparison is fair — only the knowledge source differs.
 """
 
 import time
@@ -61,16 +22,8 @@ from config import (
 logger = setup_logging("prompt_only_engine")
 
 
-# ══════════════════════════════════════════════
-# Data structures (mirror rag_engine.py)
-# ══════════════════════════════════════════════
 @dataclass
 class PromptOnlyResult:
-    """Full result of a prompt-only query, for observability.
-
-    Mirrors rag_engine.QueryResult but without retrieval fields,
-    so evaluation code can handle both uniformly.
-    """
     question: str
     mode: str
     answer: str = ""
@@ -86,12 +39,9 @@ class PromptOnlyResult:
     user_prompt_tokens_approx: int = 0
 
 
-# ══════════════════════════════════════════════
-# Tunisian Bac Math curriculum knowledge base
-# (encoded directly in the prompt)
-# ══════════════════════════════════════════════
-
-# Component 6: SYLLABUS GUARD — exhaustive list of forbidden methods
+# Syllabus guard: tells Gemini which methods are NOT allowed in the Tunisian Bac.
+# Without this, Gemini would use L'Hopital, Taylor series, etc. which are
+# correct math but forbidden in the program — students would lose points.
 _SYLLABUS_GUARD = """
 MÉTHODES INTERDITES (hors programme Bac Tunisien Section Maths):
 - Règle de L'Hôpital (utiliser les DL ou la factorisation à la place)
@@ -111,7 +61,11 @@ Si l'élève demande une méthode hors programme :
 → Cite le théorème/outil du programme officiel qui résout le problème
 """
 
-# Component 1: SYSTEM PROMPT with embedded curriculum
+# The main system prompt — this is where ALL domain knowledge lives.
+# It has 10 components: persona, full curriculum (10 chapters), forbidden methods,
+# Derja sandwich style, reasoning guards, hallucination control, self-verification,
+# refusal policy, and confidence calibration.
+# Why so long: without retrieval, this prompt IS the entire knowledge base.
 _SYSTEM_PROMPT = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé dans la préparation au Baccalauréat (Section Mathématiques).
 
 ═══════════════════════════════════════
@@ -281,9 +235,7 @@ COMPOSANT 10 : CALIBRATION DE CONFIANCE
   résultat incertain → SIGNALE-LE à l'élève
 """
 
-# ══════════════════════════════════════════════
-# Component 2: INSTRUCTION STRUCTURE templates
-# ══════════════════════════════════════════════
+# User prompt templates
 
 _USER_PROMPT_CORRECTION = """MODE : CORRECTION TYPE BAC
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -334,11 +286,7 @@ QUESTION DE L'ÉLÈVE :
 """
 
 
-# ══════════════════════════════════════════════
-# Engine class
-# ══════════════════════════════════════════════
 class TunisianMathPromptOnly:
-    """Prompt-Engineering-Only math tutor. Mirrors TunisianMathRAG's API."""
 
     def __init__(self, model_id: str = None):
         logger.info("Initializing TunisianMathPromptOnly engine...")
@@ -363,7 +311,6 @@ class TunisianMathPromptOnly:
         return _USER_PROMPT_COACHING.format(question=question)
 
     def _generate(self, system_prompt: str, user_prompt: str, retries: int = 3) -> str:
-        """Generate with exponential-backoff retry (identical to rag_engine)."""
         last_err = None
         for attempt in range(1, retries + 1):
             try:
@@ -391,7 +338,7 @@ class TunisianMathPromptOnly:
 
         Args:
             question: Student's math question (French or Derja).
-            mode: "correction" for dry bac-style answer,
+            mode: "correction" for concise Bac-style answer,
                   "coaching" for pedagogical explanation.
 
         Returns:
@@ -433,14 +380,10 @@ class TunisianMathPromptOnly:
 
     @staticmethod
     def _estimate_confidence(question: str) -> str:
-        """Heuristic confidence without retrieval scores.
-
-        Uses question characteristics to estimate how likely the prompt-only
-        system is to produce a correct answer.
-        """
+        """Without retrieval we can't measure distance, so we use a simple
+        keyword heuristic: if the question mentions standard Bac topics
+        (récurrence, intégrale, etc.) we're more confident Gemini knows it."""
         q = question.lower()
-
-        # High-confidence: classic exercise types with standard methods
         high_keywords = [
             "récurrence", "recurrence", "limite", "dérivée", "derivee",
             "primitive", "intégrale", "integrale", "complexe", "module",

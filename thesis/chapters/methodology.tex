@@ -1,0 +1,524 @@
+\chapter{Methods}
+\label{chap:Methods}
+
+This chapter presents the three system variants used in the thesis: the RAG
+system (Section~\ref{sec:rag-system}), the prompt-only baseline
+(Section~\ref{sec:prompt-only}), and the hybrid system
+(Section~\ref{sec:hybrid}). Since all three variants share the same overall
+infrastructure, the chapter begins with the common pipeline before describing
+the differences between them.
+
+\section{System Overview}
+\label{sec:system-overview}
+
+We developed three system variants that share the same generative model,
+persona, and output format, but differ in how they construct the context
+given to the model. Two of the three variants (RAG and Hybrid) use
+retrieval-augmented generation~\cite{lewis2020rag,gao2024rag_survey},
+whereas the third (Prompt-Only) relies entirely on prompt engineering
+without retrieval. The shared infrastructure is organized as a five-stage
+pipeline tailored to the Tunisian Bac domain. The main differences between
+the variants appear in the retrieval and generation stages.
+Figure~\ref{fig:system-architecture} shows the complete pipeline.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.2cm and 1.8cm,
+    stage/.style={rectangle, draw=black!70, fill=blue!8, rounded corners=4pt,
+                  minimum width=3.2cm, minimum height=1.1cm, align=center,
+                  font=\small\bfseries},
+    comp/.style={rectangle, draw=black!50, fill=white, rounded corners=2pt,
+                 minimum width=2.6cm, minimum height=0.8cm, align=center,
+                 font=\small},
+    arrow/.style={->, >=stealth, thick, draw=black!60},
+    label/.style={font=\footnotesize\itshape, text=black!60},
+]
+
+\node[stage] (acq) {Stage 1\\Data Acquisition};
+\node[comp, below=0.5cm of acq] (scan) {Scanned exams,\\series, cours};
+
+\node[stage, right=2cm of acq] (dig) {Stage 2\\Digitization};
+\node[comp, below=0.5cm of dig] (gemini_ocr) {Gemini multimodal\\OCR $\to$ \LaTeX{}};
+
+\node[stage, right=2cm of dig] (idx) {Stage 3\\Indexing};
+\node[comp, below=0.5cm of idx] (chunk) {Adaptive chunking\\+ BGE-M3 embedding};
+\node[comp, below=0.4cm of chunk] (chroma) {ChromaDB\\vector store};
+
+\node[stage, right=2cm of idx] (ret) {Stage 4\\Retrieval};
+\node[comp, below=0.5cm of ret] (twostage) {Two-stage retrieval\\+ companion fetch};
+
+\node[stage, right=2cm of ret] (gen) {Stage 5\\Generation};
+\node[comp, below=0.5cm of gen] (llm) {Gemini LLM\\``Monsieur Tounsi''};
+
+\draw[arrow] (acq) -- node[above, label] {images/PDF} (dig);
+\draw[arrow] (dig) -- node[above, label] {.tex files} (idx);
+\draw[arrow] (idx) -- node[above, label] {vectors} (ret);
+\draw[arrow] (ret) -- node[above, label] {context} (gen);
+
+\draw[arrow] (scan) -- (acq);
+\draw[arrow] (gemini_ocr) -- (dig);
+\draw[arrow] (chunk) -- (idx);
+\draw[arrow] (chroma) -- (chunk);
+\draw[arrow] (twostage) -- (ret);
+\draw[arrow] (llm) -- (gen);
+
+\node[comp, above=0.8cm of ret, fill=green!10, draw=green!50!black]
+    (query) {Student query};
+\draw[arrow, draw=green!50!black] (query) -- (ret);
+
+\node[comp, above=0.8cm of gen, fill=red!8, draw=red!50!black]
+    (answer) {Generated answer};
+\draw[arrow, draw=red!50!black] (gen) -- (answer);
+
+\draw[dashed, gray] ([xshift=0.9cm]idx.east |- acq.north) ++(0,1.2)
+    -- ++(0,-5.5) node[below, font=\footnotesize\bfseries, text=gray]
+    {offline $\mid$ online};
+
+\end{tikzpicture}%
+}
+\caption{End-to-end system pipeline. Stages~1--3 are offline preparation
+steps, while Stages~4--5 are executed at query time.}
+\label{fig:system-architecture}
+\end{figure}
+
+The corpus is built from three types of material: past Bac exams with
+corrections, chapter-based exercise series, and course documents. These
+sources are first digitized into \LaTeX{} using Gemini as a multimodal OCR
+tool. The digitized files are then normalized, split into chunks, embedded
+with BGE-M3~\cite{chen2024bge_m3}, and stored in a local ChromaDB
+instance~\cite{chromadb2024}. The final indexed collection contains 624
+source files grouped into 19 chapters or categories and represented by
+1{,}422 chunks.At query time, the retrieval step starts by searching correction-style
+documents, since these are the most useful when the goal is to reproduce the
+form and phrasing of Bac solutions. A second pass for course material exists
+as a fallback when correction retrieval is weak. In addition, when a
+correction chunk is selected, the system retrieves its matching exercise
+statement so that the model receives both the question and the correction
+context together. The retrieved material is then inserted into a structured
+prompt and sent to Gemini through Vertex AI for answer generation.
+
+All three system variants share the same base model, the same persona
+(``Monsieur Tounsi''), and the same general answer format. The main
+difference between them is how they obtain domain knowledge at inference
+time. The RAG system uses retrieved documents, the prompt-only baseline
+relies on prompt-encoded knowledge without retrieval, and the hybrid system
+adapts its behavior according to retrieval confidence. This setup makes the
+comparison between the three approaches more controlled and easier to
+interpret.
+\section{RAG System}
+\label{sec:rag-system}
+
+This section presents the RAG system, which is the main technical
+contribution of this thesis. The pipeline has six components: data
+acquisition, digitization, database construction, embedding model selection,
+two-stage retrieval, and answer generation.
+
+\subsection{Data Acquisition}
+\label{sec:data-acquisition}
+
+The foundation of any RAG system is the quality of its knowledge
+base~\cite{lewis2020rag, gao2024rag_survey}. Research on data quality in
+AI systems has shown that downstream performance often depends more on data
+quality than on model architecture, and that problems introduced early in
+the data pipeline can propagate throughout the whole
+system~\cite{sambasivan2021everyone}. This observation guided our approach:
+we prioritized corpus quality and structural consistency over size.
+Before this work, no publicly available, machine-readable corpus of Tunisian
+Bac mathematics materials was available. The main sources were printed
+examination books, handwritten corrections, and scanned course pages
+prepared by experienced teachers.
+
+\textbf{Physical data collection.} The raw material was collected during a
+trip to Tunisia, where books and course materials were obtained from Bac
+mathematics teachers. For printed material, a standard scanner or phone
+camera provided sufficient quality. For handwritten corrections with dense
+notation or faded ink, the corrections were manually rewritten on a tablet
+(iPad with Apple Pencil) before scanning. This was time-consuming, but
+necessary to improve data quality~\cite{sambasivan2021everyone,
+wang2023ocrbench, mahdavi2019icdar_math}.Each exercise was scanned 
+\textit{together with its correction} as a single
+image or PDF, rather than separating the statement from the solution. Course
+material was scanned as continuous documents for each chapter.
+
+\textbf{Corpus structure.} The material was uploaded to Google Cloud
+Storage~\cite{gcloud_storage2024} in a hierarchical structure:
+
+\begin{verbatim}
+BacMath_Raw_Data/
+  01_Continuite_et_limites/
+    Cours/                      -> course material
+    series_et_corrections/      -> exercises + corrections
+  ...
+  20_Coniques/
+  Bac_avec_corrections_Images/  -> past exam corrections
+\end{verbatim}
+
+This naming convention is machine-readable: the indexing pipeline extracts
+document type, chapter, year, session, and exercise number directly from
+folder paths using regular expressions. The corpus comprises 624 source
+files spanning 19 chapters: 312 corrected exam pages, 250 series exercise
+files, and 62 course material files, yielding 1{,}422 chunks after indexing.
+
+\textbf{Paired exercise/correction acquisition.} Scanning each exercise
+together with its correction was a deliberate design choice. In mathematics,
+a correction is a complete reasoning chain whose structure depends on the
+exercise statement. Separating the two would break this link. The retrieval
+system also benefits from keeping them connected, since the most useful
+retrieval target is a complete worked example rather than an isolated
+solution. This is in line with prior work showing that structure-aware
+document processing can improve retrieval
+quality~\cite{zhao2024financial_chunking, chen2024mog}.
+\subsection{Mathematical Document Digitization}
+\label{sec:digitization}
+
+The next step converts scanned images into machine-readable \LaTeX{}.
+Mathematical documents contain two-dimensional structures such as fractions,
+subscripts, and integrals that standard OCR systems do not handle
+well~\cite{wang2023ocrbench, mahdavi2019icdar_math}.
+
+\textbf{Tool selection.} We initially considered
+Mathpix~\cite{mathpix2024}, a commercial math OCR service, but its per-page
+pricing made it impractical for a thesis prototype. Instead, we used Gemini
+through Vertex AI. Benchmarking by Wang et al.~\cite{wang2023ocrbench}
+reported strong OCR performance for Gemini among the multimodal models they
+tested. For our material, which was mainly printed or cleanly rewritten,
+Gemini provided sufficient quality at low cost. The decision was therefore
+mainly practical and budget-related, rather than based on a claim that
+Gemini is universally more accurate than Mathpix.
+
+\textbf{Pipeline (\texttt{digitize.py}).} The digitization pipeline first
+enumerates images and PDFs stored in Google Cloud Storage, then checks
+whether a corresponding \texttt{.tex} file already exists so that previously
+processed files can be skipped. Each remaining file is sent to Gemini with a
+structured prompt requesting a faithful transcription into \LaTeX{}. The
+result is then uploaded back to cloud storage. To make the process more
+robust, the pipeline also includes retry logic with exponential backoff for
+temporary API errors.
+
+\textbf{Quality.} Digitization quality matters because errors can propagate
+to later stages of the system. A misread formula may be embedded
+incorrectly, retrieved later, and then passed to the language model as part
+of the prompt. The ground-truth evaluation discussed in
+Section~\ref{sec:ocr-evaluation} reported an average CER of 5.4\% and a
+\LaTeX{} math expression accuracy of 97.1\%. This was sufficient for the
+present corpus, but it does not mean the digitization was error-free.
+\subsection{Database Construction and Indexing}
+\label{subsec:database-construction}
+
+\textbf{Migration to ChromaDB.} An early prototype used a JSON-based vector
+store. It was sufficient for small initial experiments, but it became too
+limited as the corpus grew because it required loading everything into
+memory, did not support incremental updates, and offered no metadata
+filtering. For this reason, the system was migrated to
+ChromaDB~\cite{chromadb2024}, which provides persistent local storage,
+metadata-based filtering, and stable upsert operations.
+
+\textbf{Text normalization.} Before chunking, each \texttt{.tex} file is
+cleaned with a light normalization step. Line endings are standardized,
+whitespace is collapsed, and excessive newlines are reduced. The goal is not
+to heavily rewrite the text, but simply to make the corpus more consistent
+before indexing.
+
+\textbf{Adaptive chunking.} The chunking strategy depends on document type.
+Corrections are split into 1{,}500-character chunks with 200-character
+overlap so that individual exercise solutions remain as intact as possible.
+Course material uses larger 3{,}000-character chunks with 250-character
+overlap, since theorem statements and explanations often need more context
+to remain meaningful. Whenever possible, the splitter prefers natural break
+points such as paragraph breaks, line breaks, or sentence endings instead of
+cutting at arbitrary character positions. This follows earlier findings that
+structure-aware chunking can improve retrieval quality~\cite{zhao2024financial_chunking, chen2024mog}.
+
+\textbf{Metadata extraction.} Each chunk is stored together with metadata
+derived automatically from the Google Cloud Storage path. This includes the
+document type (\texttt{bac\_officiel}, \texttt{serie}, or \texttt{cours}),
+the chapter, year, session, exercise identifier, whether the chunk belongs
+to a solution, a group identifier for companion pairing, the filename, and
+the source URI. This metadata plays an important role in retrieval because
+it allows filtering and exercise--correction pairing without manual
+annotation.
+
+\textbf{Incremental indexing.} To avoid rebuilding the full database after
+every change, the indexing pipeline maintains a manifest file
+(\texttt{index\_manifest.json}) containing each file's GCS generation number
+and content hash. Only files whose content has changed are embedded again.
+In practice, this reduced re-indexing time from minutes to seconds during
+development.
+\subsection{Embedding Model Selection}
+\label{subsec:embedding-selection}
+
+Retrieval quality depends strongly on the embedding model. If two queries
+with different mathematical meaning are mapped to very similar vectors, the
+retrieval step may return the wrong context, and later stages cannot fully
+correct that error. This issue is particularly important in mathematics,
+where even small notation changes such as $v(n)$ versus $u(n)$ can refer to
+different objects.
+
+\textbf{Initial experience.} Our first implementation used a Google
+embedding model through Vertex AI. During testing, it did not always
+separate closely related mathematical expressions clearly. In some cases, a
+query about $v(n)$ retrieved chunks about $u(n)$. This is not surprising,
+since general-purpose embedding models often treat small lexical differences
+as minor, even though they can be mathematically important~\cite{mansouri2019tangent, pfahler2020math_embeddings}.
+This observation came from development and testing rather than from a formal
+controlled experiment.
+
+\textbf{Migration to BGE-M3.} We then switched to
+BGE-M3~\cite{chen2024bge_m3}, which is based on XLM-RoBERTa and supports up
+to 8{,}192 tokens. Its multilingual coverage, relatively long context
+window, and training design made it a better fit for our corpus, which mixes
+French mathematical text, some Arabic content, and longer exercise-based
+documents. After this change, the earlier confusion between $v(n)$ and
+$u(n)$ was no longer observed in our tests.
+
+In the implementation, the embedding model is wrapped as a custom ChromaDB
+\texttt{EmbeddingFunction}. It is loaded once as a singleton, with automatic
+GPU detection when available.
+\subsection{RAG Retrieval and Generation Engine}
+\label{subsec:retrieval-engine}
+
+The runtime pipeline is implemented in \texttt{rag\_engine.py}. It is
+independent of the user interface: the same \texttt{query(question, mode)}
+method returns a structured result and can be called from Streamlit,
+Jupyter, or the command line.
+
+\textbf{Two-stage retrieval.} The first retrieval pass searches correction
+documents (\texttt{is\_solution=true}) and returns up to $k_1 = 10$
+candidates. The idea is pedagogical as much as technical: a corrected
+exercise provides not only mathematical content, but also an example of the
+style and phrasing expected in Bac solutions.
+
+If the best result from this first pass has an L2 distance above 1.2, the
+system launches a second pass over course material and retrieves up to
+$k_2 = 8$ additional documents. This second pass is intended to provide
+theorem-level support when no strong correction-style match is available. If
+retrieval remains weak, the engine can fall back to a broader unfiltered
+search.
+
+\textbf{Similarity thresholds.} Two distance thresholds guide the retrieval
+logic. A best distance of at most 1.2 is treated as a strong match
+(Case~A). Results above 1.6 are considered too weak and are discarded. The
+interval between these two values corresponds to weaker matches that may
+still be usable in fallback situations. These thresholds were set
+empirically for BGE-M3 on the present corpus.
+
+\textbf{Context compilation.} The selected documents are converted into
+structured context blocks that include metadata and explicit role markers
+such as \texttt{[\'ENONC\'E]} and \texttt{[CORRECTION]}. To keep prompts
+within a manageable size, each document is truncated to at most 2{,}000
+characters and the total retrieved context is capped at 14{,}000
+characters.
+
+\textbf{Prompt and generation.} The retrieved context is inserted into a
+system prompt built around the ``Monsieur Tounsi'' persona. This prompt also
+contains syllabus constraints, anti-hallucination instructions,
+anti-injection rules, and guidance on how to use the retrieved material. In
+the strong retrieval case, the model is encouraged to stay close to the
+style of the retrieved correction. In weaker cases, it is instructed to rely
+more on theorem-based reasoning from the available context. Generation is
+performed with Gemini through Vertex AI using a low temperature
+($T = 0.15$) and a maximum of 4{,}096 output tokens. Retry logic with
+exponential backoff is used for temporary API failures.
+
+\textbf{Confidence and observability.} Each query returns not only the final
+answer, but also diagnostic information such as timing, retrieval metadata,
+and a confidence label. The confidence level is marked as \textit{fort},
+\textit{moyen}, or \textit{faible} depending on the retrieval result and the
+amount of useful context available. This made it easier to inspect system
+behavior during testing and later analysis.
+\subsection{Paired Retrieval of Exercise and Correction}
+\label{subsec:paired-retrieval}
+
+During testing, we observed that the system could retrieve a correction
+without the corresponding exercise statement, or the opposite. This was a
+problem because a mathematical correction is usually not self-contained: its
+notation, assumptions, and goals depend directly on the exercise.
+
+To address this, the engine performs an additional companion lookup after
+retrieval. For each selected correction, it uses metadata such as
+\texttt{chapter}, \texttt{type}, \texttt{year}, and \texttt{exo\_id} to
+search for the matching exercise statement with
+\texttt{is\_solution=false}. This step relies on direct metadata filtering
+in ChromaDB rather than vector similarity search. The retrieved exercise
+chunks are then added to the prompt before the correction, with an
+\texttt{[\'ENONC\'E]} label.
+
+This mechanism is similar in spirit to parent-document
+retrieval~\cite{gao2024rag_survey}, but adapted to the specific structure of
+mathematics exercises and corrections. In practice, it improved the
+completeness of the context given to the model.
+
+\subsection{Connection to the Tunisian Bac Context}
+\label{subsec:bac-context}
+
+The system design was shaped by several characteristics of the Tunisian Bac
+mathematics setting. First, the curriculum is relatively fixed, so the tutor
+must stay within the accepted program and avoid methods that are not
+expected in the exam. Second, official corrections follow a recognizable
+writing style, which motivated the retrieval of solved exercises as style
+examples. Third, exercises and corrections naturally belong together, which
+led to the companion retrieval mechanism described above. Finally, the
+setting is partly bilingual: the source material is mainly in French with
+mathematical notation in \LaTeX{}, while student questions may also contain
+Tunisian Derja. This made multilingual retrieval support important for the
+system.
+\section{Prompt-Only Baseline}
+\label{sec:prompt-only}
+
+\subsection{Role and Rationale}
+
+The prompt-only baseline is designed as a control condition without
+retrieval. It receives the same student question as the RAG system and uses
+the same Gemini model, temperature, and output budget, but it does not query
+the vector database. Instead, the relevant domain constraints are provided
+directly in the system prompt.
+
+This baseline is important for the evaluation because it helps separate the
+effect of retrieval from the effect of the language model itself. Recent
+LLMs already contain strong parametric knowledge in standard mathematical
+domains~\cite{brown2020gpt3,team2023gemini}, and well-structured prompts can
+often guide that knowledge effectively~\cite{wei2022chain_of_thought}. For
+that reason, the comparison is not simply between a "simple" and a
+"complex" system. It is a test of whether retrieval adds value beyond what
+the model can already produce when it is carefully instructed.
+
+To keep the comparison fair, the prompt-only baseline shares the same
+general setup as the RAG system. Both use the same persona, the same
+syllabus constraints, the same answer format, and the same external API.
+The main difference is that the prompt-only system relies entirely on
+prompt-encoded guidance instead of retrieved documents.
+
+\subsubsection{Prompt Architecture}
+
+The system prompt was built gradually during development and serves several
+functions at once. Its role is not only to make the model answer the
+question, but to make it answer in a way that is useful for Tunisian Bac
+students. In particular, it defines the persona of ``Monsieur Tounsi'', sets
+the curriculum boundaries, specifies the expected answer structure, and adds
+rules for uncertainty, refusal, and out-of-scope methods.
+
+The prompt can be understood as having ten main components, following the
+general idea of prompt patterns~\cite{white2023prompt_patterns}.
+
+\begin{description}
+    \item[Persona.] ``Monsieur Tounsi'' is presented as an experienced
+    Tunisian mathematics teacher preparing students for the Baccalaureate.
+    He explains mathematics in formal French, but uses short phrases in
+    Tunisian Derja for encouragement and motivation. This Derja--French
+    structure, referred to in the project as the ``Derja sandwich,'' was
+    intended to reflect a familiar tutoring style while keeping the
+    mathematical explanation formal.
+
+    \item[Curriculum inventory.] The prompt includes the main Bac chapters
+    and their allowed topics so that the model stays within the official
+    syllabus even without retrieval.
+
+    \item[Reasoning guardrails.] A six-step internal checklist guides the
+    answering process: identify the topic, recall the relevant result,
+    verify that the method is allowed, plan the solution, solve it, and
+    check the final answer~\cite{wei2022chain_of_thought}.
+
+    \item[Output structure.] The answer is organized into a fixed pedagogical
+    format, including identification of the topic, recall of the relevant
+    course material, method, application, conclusion, and verification.
+
+    \item[Hallucination control.] Since the prompt-only system has no
+    retrieved documents, the prompt explicitly tells the model not to invent
+    exercise numbers, page references, or unsupported details.
+
+    \item[Syllabus guard.] The prompt lists methods that are outside the Bac
+    program, such as L'H\^opital's rule, Taylor series, and diagonalization,
+    and instructs the model to avoid them.
+
+    \item[Derja sandwich.] Each answer begins and ends with a short
+    motivational sentence in Tunisian Derja, while the mathematical body
+    remains in formal French.
+
+    \item[Self-verification.] The model is instructed to include a visible
+    verification step at the end of the answer.
+
+    \item[Refusal policy.] The prompt defines when the system should refuse,
+    especially for out-of-scope requests.
+
+    \item[Confidence calibration.] A simple confidence label (high, medium,
+    or low) is added based on the form of the question, since no retrieval
+    score is available in this setting.
+\end{description}
+
+This prompt architecture did not come from a single design decision at the
+start of the project. It was refined iteratively as recurrent failure modes
+appeared during testing, especially curriculum violations, hallucinated
+references, and unstable formatting.
+
+\subsection{Confidence Without Retrieval}
+
+Because this system does not retrieve documents, it cannot use retrieval
+distance as a confidence signal. Instead, it assigns a simple heuristic
+confidence label based on the form of the question. Questions that clearly
+match common Bac topics are marked with higher confidence, while short or
+ambiguous questions receive lower confidence. This mechanism is only a
+practical approximation and should not be interpreted as a measure of model reliability.
+
+\section{Hybrid Engine}
+\label{sec:hybrid}
+
+\subsection{Motivation}
+
+The RAG and prompt-only systems represent two opposite strategies. The RAG
+system always tries to use retrieved documents, while the prompt-only system
+never uses retrieval at all. In practice, neither is always better .
+Recent work on adaptive retrieval has shown that the decision of whether to
+rely on retrieval can matter as much as retrieval itself~\cite{yan2024practical_rag,asai2023self_rag}.
+
+Rather than introducing a separate learned system, it uses a signal that is
+already available in the system: the L2 distance of the best retrieved
+document.
+
+\subsection{Routing Logic}
+
+The hybrid engine starts with the same retrieval process as the RAG system.
+It then chooses one of three generation strategies based on the best
+retrieval distance, excluding companion documents.
+
+When the best distance is at most 1.2, the query is treated as a strong
+retrieval case (Case~A). In this situation, the system follows the RAG
+strategy and relies mainly on the retrieved context. 
+
+When the best distance falls between 1.2 and 1.6, the query is treated as a
+partial retrieval case (Case~B). Here, the prompt includes both the
+retrieved material and the broader curriculum guidance used in the
+prompt-only system. The goal is to let the model benefit from retrieval
+without forcing it to depend entirely on context that may be only partly
+relevant.
+
+If the best distance is above 1.6, the system treats retrieval as too weak
+to be useful (Case~C). In that case,  the engine falls back to the prompt-only strategy.
+
+This routing logic can be seen as a simple approximation of adaptive
+retrieval methods such as CRAG~\cite{yan2024practical_rag}, but with fixed
+thresholds instead of a learned quality estimator.
+
+\subsection{Thresholds and Confidence}
+
+The two thresholds, 1.2 and 1.6, were chosen empirically during
+development by inspecting retrieval behavior on test queries. They should
+therefore be understood as corpus-specific settings rather than as generally
+valid values.
+
+Confidence is also tied to the routing case. In Case~A, the system uses the
+same confidence logic as the RAG engine. In Case~B, confidence is limited to
+a medium level because the answer is only partially grounded in retrieved
+documents. In Case~C, the system falls back to the simpler heuristic used by
+the prompt-only baseline.
+
+\subsection{Relationship to Adaptive Retrieval}
+
+Compared with more advanced adaptive retrieval systems, the hybrid engine is
+deliberately simple.  Its role in this thesis is not
+to propose a new adaptive retrieval method in general, but to test whether a
+lightweight form of retrieval-aware routing can improve robustness in a
+small, specialized educational corpus.
+
+    

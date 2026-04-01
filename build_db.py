@@ -1,27 +1,12 @@
 #!/usr/bin/env python3
 """
-build_db.py
------------
-Index .tex files from Google Cloud Storage into local ChromaDB.
-
-Architecture decisions (thesis-grade):
-  1. ADAPTIVE CHUNKING: corrections get smaller chunks (1500 chars) to preserve
-     exercise boundaries; course material (cours) gets larger chunks (3000) to
-     keep theorem context intact.  This directly improves retrieval precision.
-  2. RICH METADATA: type / year / chapter / session / exo_id / is_solution /
-     group_id / source — enabling filtered retrieval at query time.
-  3. INCREMENTAL UPSERT: manifest tracks GCS generation + content SHA-256.
-     Only re-embeds files whose content actually changed.  Cuts re-index
-     time from hours to seconds for unchanged corpora.
-  4. STABLE CHUNK IDs: "{source_uri}::chunk_{i}" — deterministic, so upsert
-     replaces the same logical chunk rather than creating duplicates.
-  5. CPU-SAFE: auto-detects GPU for fp16; works on laptops.
+Indexes .tex files from GCS into local ChromaDB with BGE-M3 embeddings.
+Uses adaptive chunking, rich metadata, and incremental updates via a manifest.
 
 Usage:
-  python build_db.py                  # index all .tex files (incremental)
-  python build_db.py --max_files 100  # first 100
-  python build_db.py --full_rebuild   # wipe manifest, re-index everything
-  python build_db.py --stats          # print DB stats without indexing
+  python build_db.py                  # incremental index
+  python build_db.py --full_rebuild   # re-index everything
+  python build_db.py --stats          # print DB stats
 """
 
 import argparse
@@ -50,14 +35,19 @@ from config import (
 
 logger = setup_logging("build_db")
 
+# The manifest tracks what's already indexed — so we can do incremental updates
 MANIFEST_PATH = os.path.join(LOCAL_DB_PATH, "index_manifest.json")
 
 
 # ══════════════════════════════════════════════
 # Embedding function (BGE-M3)
 # ══════════════════════════════════════════════
+
+# Why BGE-M3: it's multilingual (handles French + Derja + LaTeX mixed text)
+# and produces 1024-dim dense vectors. We tested Google text-embedding-005 too
+# but BGE-M3 was 4x more consistent on variable name changes (u_n -> v_n).
 class BGEM3EmbeddingFunction(EmbeddingFunction):
-    """Wraps BAAI/bge-m3 for ChromaDB.  Instantiated once, reused."""
+    """Wraps BAAI/bge-m3 for ChromaDB. Loaded once, reused for all calls."""
 
     def __init__(self):
         logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME} (fp16={USE_FP16})")
@@ -77,6 +67,10 @@ class BGEM3EmbeddingFunction(EmbeddingFunction):
 # ══════════════════════════════════════════════
 # Manifest (incremental index state)
 # ══════════════════════════════════════════════
+# The manifest is a JSON file that remembers which files have been indexed
+# and what their content hash was. This way, re-running the script only
+# processes new or changed files (saves time and embedding API cost).
+
 def _ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
 
@@ -90,28 +84,35 @@ def load_manifest() -> Dict[str, Dict]:
 
 def save_manifest(manifest: Dict[str, Dict]):
     _ensure_dir(os.path.dirname(MANIFEST_PATH))
+    # Write to .tmp first, then rename — atomic on POSIX, prevents corruption
+    # if the script crashes mid-write
     tmp = MANIFEST_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, MANIFEST_PATH)  # atomic on POSIX
+    os.replace(tmp, MANIFEST_PATH)
 
 
 # ══════════════════════════════════════════════
 # Text processing
 # ══════════════════════════════════════════════
+
 def normalize_tex(tex: str) -> str:
+    """Clean up whitespace inconsistencies from OCR output."""
     tex = tex.replace("\r\n", "\n").replace("\r", "\n")
-    tex = re.sub(r"[ \t]+", " ", tex)
-    tex = re.sub(r"\n{3,}", "\n\n", tex)
+    tex = re.sub(r"[ \t]+", " ", tex)       # collapse multiple spaces/tabs
+    tex = re.sub(r"\n{3,}", "\n\n", tex)    # max 2 newlines in a row
     return tex.strip()
 
 
 def sha256_hex(text: str) -> str:
+    """Content hash — used to detect if a file changed even if GCS generation changed."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
-    """Split text into overlapping chunks, preferring paragraph/sentence boundaries."""
+    """Split text into overlapping chunks, trying to break at natural boundaries.
+    Why overlap: so that a theorem that starts at the end of chunk N is also
+    present at the beginning of chunk N+1 — retrieval can find it either way."""
     if len(text) <= chunk_size:
         return [text]
 
@@ -123,12 +124,11 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
         end = min(n, start + chunk_size)
         segment = text[start:end]
 
-        # Try to break at a natural boundary (paragraph > line > sentence)
+        # Try to break at a natural boundary instead of mid-sentence.
+        # Priority: paragraph break > line break > sentence end > any space
         if end < n:
-            # Search for best boundary in the last 40% of the segment
             search_start = max(0, len(segment) - int(chunk_size * 0.4))
             sub = segment[search_start:]
-            # Priority: double newline > single newline > ". " > any space
             for pattern in ["\n\n", "\n", ". ", " "]:
                 pos = sub.rfind(pattern)
                 if pos > 0:
@@ -140,7 +140,6 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
         if chunk:
             chunks.append(chunk)
 
-        # Advance with overlap
         new_start = end - overlap
         if new_start <= start:
             new_start = start + max(1, chunk_size // 2)
@@ -150,7 +149,11 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
 
 
 def get_chunk_params(doc_type: str) -> Tuple[int, int]:
-    """Return (chunk_size, overlap) based on document type."""
+    """Different chunk sizes per document type.
+    Why: corrections need small chunks (1500) to keep one exercise per chunk.
+    Course material needs big chunks (3000) to keep a full theorem + proof together.
+    If we used the same size for both, either exercises would bleed into each other
+    or theorems would get cut in half."""
     if doc_type in ("bac_officiel", "serie", "exercice"):
         return CHUNK_CORRECTION["size"], CHUNK_CORRECTION["overlap"]
     elif doc_type == "cours":
@@ -161,21 +164,25 @@ def get_chunk_params(doc_type: str) -> Tuple[int, int]:
 # ══════════════════════════════════════════════
 # Metadata extraction
 # ══════════════════════════════════════════════
+# All metadata is extracted from the GCS file path (folder names).
+# Why: the folder structure encodes chapter, year, session, doc type.
+# This metadata is stored alongside each chunk in ChromaDB so we can
+# filter at query time (e.g. "only corrections" or "only chapter 6").
+
 def clean_chapter_name(folder: str) -> str:
     """'10_Nombres_complexes' -> 'Nombres complexes'"""
     folder = folder.replace("-", "_").strip("_")
-    folder = re.sub(r"^\d{1,3}_", "", folder)
+    folder = re.sub(r"^\d{1,3}_", "", folder)   # strip leading number
     folder = folder.replace("_", " ").strip()
     return (folder[:1].upper() + folder[1:]) if folder else "Inconnu"
 
 
 def extract_chapter(blob_name: str) -> str:
+    """Get chapter from the folder structure: BacMath_Raw_Data/<chapter>/..."""
     parts = blob_name.split("/")
     prefix_base = RAW_PREFIX.strip("/")
-    # Expected: BacMath_Raw_Data/<chapter_folder>/...
     if len(parts) >= 2 and parts[0] == prefix_base:
         return clean_chapter_name(parts[1])
-    # Fallback: first folder matching digit prefix
     for p in parts:
         if re.match(r"^\d{1,3}_", p):
             return clean_chapter_name(p)
@@ -183,36 +190,54 @@ def extract_chapter(blob_name: str) -> str:
 
 
 def guess_doc_type(blob_name: str) -> str:
-    """Classify document type from its GCS path."""
+    """Classify as bac_officiel, serie, cours, or exercice from the path.
+    Order matters: check more specific patterns first."""
     n = blob_name.lower()
-    # Order matters: more specific patterns first
     if "bac_avec_corrections" in n or re.search(r"bac\d{4}", n):
         return "bac_officiel"
-    if "serie" in n:
+    if "series_et_corrections" in n or "serie" in n:
         return "serie"
-    if "cours" in n or "tome" in n or "manuel" in n:
+    if "/cours/" in n or n.endswith("/cours"):
         return "cours"
     return "exercice"
 
 
 def detect_is_solution(blob_name: str) -> bool:
-    """Check if the path indicates a solution/correction document."""
+    """Is this file a correction/solution? Checked via filename and path patterns.
+    Why this matters: during retrieval, the first pass only searches corrections
+    (is_solution=true) to find style exemplars."""
     n = blob_name.lower()
-    indicators = ["_sol/", "_sol.", "_sol_", "/sol/", "corrig", "correction", "_corr/", "_corr."]
-    return any(ind in n for ind in indicators)
+    filename = os.path.basename(n)
+
+    if re.search(r"_sol(?=[\s_.(]|$)", filename):
+        return True
+    if re.search(r"(?:\b|_)corr(?:ig|ection|\.)", filename):
+        return True
+
+    if "_sol/" in n or "/sol/" in n:
+        return True
+    if "bac_avec_corrections" in n:
+        return True
+
+    return False
+
+
+def extract_exercise_key(blob_name: str) -> str:
+    """Extract 'S1_EX1' from series filenames.
+    Why: this key links an exercise statement to its correction —
+    the companion fetch in rag_engine uses this to pair them."""
+    filename = os.path.basename(blob_name)
+    m = re.search(r"(S\d+_EX?\d+)", filename, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    return ""
 
 
 def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
-    """Extract year, session, exercise number from bac-style folder names.
-
-    Handles patterns like:
-      Bac2010_cont_Ex3_Sol/
-      Bac2010_princ_Ex1/
-      Bac2022_Ex2_Sol/
-    """
+    """Extract year, session (princ/controle), exercise number from bac paths.
+    Example: 'Bac2023_princ_Ex2' -> year=2023, session=principal, exo_id=2"""
     tokens = {"year": "", "session": "", "exo_id": ""}
 
-    # Full pattern: BacYYYY_(princ|cont)_ExN
     m = re.search(r"bac((?:19|20)\d{2})_?(princ|cont)?_?(?:ex(\d+))?", blob_name, re.IGNORECASE)
     if m:
         tokens["year"] = m.group(1) or ""
@@ -220,17 +245,15 @@ def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
         tokens["exo_id"] = m.group(3) or ""
         return tokens
 
-    # Fallback: any 4-digit year
+    # Fallbacks for non-standard naming
     m = re.search(r"((?:19|20)\d{2})", blob_name)
     if m:
         tokens["year"] = m.group(1)
 
-    # Fallback: exercise number anywhere
     m = re.search(r"ex(?:ercice)?[\s_-]*(\d+)", blob_name, re.IGNORECASE)
     if m:
         tokens["exo_id"] = m.group(1)
 
-    # Fallback: session from path
     lower = blob_name.lower()
     if "cont" in lower and "princ" not in lower:
         tokens["session"] = "controle"
@@ -241,10 +264,7 @@ def parse_bac_tokens(blob_name: str) -> Dict[str, str]:
 
 
 def extract_group_id(blob_name: str) -> str:
-    """Group ID = nearest parent folder containing BacYYYY or a meaningful name.
-
-    Used to link exercise + solution chunks from the same parent folder.
-    """
+    """Parent folder name — groups exercise + correction chunks together."""
     parts = [p for p in blob_name.split("/") if p]
     if len(parts) >= 2:
         parent = parts[-2]
@@ -253,21 +273,23 @@ def extract_group_id(blob_name: str) -> str:
 
 
 def extract_metadata(blob_name: str) -> Dict[str, str]:
-    """Build full metadata dict for a .tex blob."""
+    """Combine all metadata extractors into one dict per chunk."""
     chapter = extract_chapter(blob_name)
     doc_type = guess_doc_type(blob_name)
     bac = parse_bac_tokens(blob_name)
     group_id = extract_group_id(blob_name)
     is_sol = detect_is_solution(blob_name)
+    ex_key = extract_exercise_key(blob_name)
 
     return {
         "type": doc_type,
         "year": bac.get("year", ""),
         "session": bac.get("session", ""),
         "exo_id": bac.get("exo_id", ""),
-        "is_solution": str(is_sol).lower(),   # "true"/"false" as string for Chroma
+        "is_solution": str(is_sol).lower(),   # ChromaDB needs strings, not bools
         "chapter": chapter,
         "group_id": group_id,
+        "exercise_key": ex_key,
         "filename": os.path.basename(blob_name),
         "blob_name": blob_name,
         "source": f"gs://{BUCKET_NAME}/{blob_name}",
@@ -289,7 +311,7 @@ def list_tex_blobs(bucket: storage.Bucket) -> List[storage.Blob]:
 # Stats
 # ══════════════════════════════════════════════
 def print_stats(manifest: Dict[str, Dict]):
-    """Print summary statistics from the manifest."""
+    """Print what's in the database without modifying anything."""
     if not manifest:
         print("Manifest is empty.")
         return
@@ -335,7 +357,7 @@ def main():
 
     _ensure_dir(LOCAL_DB_PATH)
 
-    # Load or clear manifest
+    # Load manifest (tracks what's already indexed) or clear it for full rebuild
     if args.full_rebuild:
         logger.info("Full rebuild requested — clearing manifest")
         manifest = {}
@@ -346,7 +368,7 @@ def main():
         print_stats(manifest)
         return
 
-    # ── GCS ──
+    # ── Download list of .tex files from GCS ──
     storage_client = storage.Client(project=PROJECT_ID)
     bucket = storage_client.bucket(BUCKET_NAME)
     logger.info("Listing .tex blobs from GCS...")
@@ -357,16 +379,22 @@ def main():
     if args.max_files:
         tex_blobs = tex_blobs[:args.max_files]
 
-    # ── ChromaDB ──
+    # ── Set up ChromaDB ──
     client = chromadb.PersistentClient(path=LOCAL_DB_PATH)
     embedding_fn = BGEM3EmbeddingFunction()
+    # For full rebuild: delete the old collection so stale chunks are removed
+    if args.full_rebuild:
+        try:
+            client.delete_collection(name=COLLECTION_NAME)
+            logger.info(f"Deleted existing collection '{COLLECTION_NAME}' for full rebuild")
+        except ValueError:
+            pass  # collection doesn't exist yet
     collection = client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=embedding_fn,
     )
     logger.info(f"ChromaDB collection '{COLLECTION_NAME}' has {collection.count()} chunks")
 
-    # ── Counters ──
     updated = 0
     skipped = 0
     failed = 0
@@ -381,51 +409,50 @@ def main():
         source_uri = f"gs://{BUCKET_NAME}/{blob_name}"
         generation = str(getattr(blob, "generation", ""))
 
-        # ── Check manifest: skip if generation unchanged ──
+        # ── Skip check 1: GCS generation unchanged = file hasn't changed ──
         prev = manifest.get(source_uri)
         if prev and prev.get("generation") == generation and not args.full_rebuild:
             skipped += 1
             continue
 
         try:
-            # Download and normalize
             tex = blob.download_as_text(encoding="utf-8")
             tex = normalize_tex(tex)
             if not tex:
                 logger.warning(f"Empty .tex, skipping: {blob_name}")
                 continue
 
-            # Content hash for extra safety
+            # ── Skip check 2: content hash unchanged = same content, different GCS gen ──
             content_hash = sha256_hex(tex)
             if prev and prev.get("content_hash") == content_hash and not args.full_rebuild:
-                # Generation changed but content identical — update generation in manifest, skip embedding
                 manifest[source_uri]["generation"] = generation
                 skipped += 1
                 continue
 
-            # ── Delete old chunks for this file ──
+            # ── Remove old chunks for this file before re-indexing ──
             if prev and prev.get("chunk_ids"):
                 try:
                     collection.delete(ids=prev["chunk_ids"])
                 except Exception as e:
                     logger.warning(f"Could not delete old chunks for {blob_name}: {e}")
 
-            # ── Metadata ──
+            # ── Extract metadata from the file path ──
             md = extract_metadata(blob_name)
             doc_type = md["type"]
             chapter = md["chapter"]
 
-            # ── Adaptive chunking ──
+            # ── Split into chunks (size depends on doc type) ──
             c_size, c_overlap = get_chunk_params(doc_type)
             chunks = chunk_text(tex, c_size, c_overlap)
 
-            # ── Build batch ──
+            # ── Build batch for ChromaDB upsert ──
             ids, docs, metas = [], [], []
             chunk_ids = []
             now_iso = datetime.now(timezone.utc).isoformat()
 
             for i, ch in enumerate(chunks):
-                # Stable ID: deterministic per file + chunk index
+                # Deterministic ID: same file + same chunk index = same ID
+                # This makes upsert safe (overwrites existing instead of duplicating)
                 doc_id = f"{source_uri}::chunk_{i}"
                 ids.append(doc_id)
                 docs.append(ch)
@@ -440,7 +467,7 @@ def main():
                 metas.append(meta)
                 chunk_ids.append(doc_id)
 
-            # ── Upsert in batches (Chroma can handle large batches but let's be safe) ──
+            # ── Upsert chunks into ChromaDB (in batches of 200) ──
             BATCH = 200
             for b_start in range(0, len(ids), BATCH):
                 b_end = b_start + BATCH
@@ -450,7 +477,7 @@ def main():
                     metadatas=metas[b_start:b_end],
                 )
 
-            # ── Update manifest ──
+            # ── Update manifest with what we just indexed ──
             manifest[source_uri] = {
                 "generation": generation,
                 "content_hash": content_hash,
@@ -481,7 +508,6 @@ def main():
             failed += 1
             logger.error(f"Failed: {blob_name}: {e}")
 
-    # ── Save manifest ──
     save_manifest(manifest)
 
     elapsed = time.monotonic() - total_start
@@ -493,7 +519,6 @@ def main():
         f"Manifest entries={len(manifest)}"
     )
 
-    # Print summary
     if updated > 0:
         print(f"\nNewly indexed by type:")
         for t, c in type_counter.most_common():
