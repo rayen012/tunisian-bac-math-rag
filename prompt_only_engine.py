@@ -1,6 +1,9 @@
 """
-Prompt-only baseline: no retrieval, all knowledge from the prompt + Gemini's
-parametric memory. Same API as rag_engine for fair comparison.
+Prompt-only baseline: no retrieval, no database, no embeddings.
+All domain knowledge is encoded directly in the system prompt.
+Why this exists: to answer the question "does retrieval actually help,
+or is a good prompt enough?" Uses the same Gemini model + same temperature
+as RAG so the comparison is fair — only the knowledge source differs.
 """
 
 import time
@@ -36,7 +39,9 @@ class PromptOnlyResult:
     user_prompt_tokens_approx: int = 0
 
 
-# Syllabus guard: forbidden methods
+# Syllabus guard: tells Gemini which methods are NOT allowed in the Tunisian Bac.
+# Without this, Gemini would use L'Hopital, Taylor series, etc. which are
+# correct math but forbidden in the program — students would lose points.
 _SYLLABUS_GUARD = """
 MÉTHODES INTERDITES (hors programme Bac Tunisien Section Maths):
 - Règle de L'Hôpital (utiliser les DL ou la factorisation à la place)
@@ -56,7 +61,11 @@ Si l'élève demande une méthode hors programme :
 → Cite le théorème/outil du programme officiel qui résout le problème
 """
 
-# System prompt with embedded curriculum
+# The main system prompt — this is where ALL domain knowledge lives.
+# It has 10 components: persona, full curriculum (10 chapters), forbidden methods,
+# Derja sandwich style, reasoning guards, hallucination control, self-verification,
+# refusal policy, and confidence calibration.
+# Why so long: without retrieval, this prompt IS the entire knowledge base.
 _SYSTEM_PROMPT = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé dans la préparation au Baccalauréat (Section Mathématiques).
 
 ═══════════════════════════════════════
@@ -371,9 +380,10 @@ class TunisianMathPromptOnly:
 
     @staticmethod
     def _estimate_confidence(question: str) -> str:
+        """Without retrieval we can't measure distance, so we use a simple
+        keyword heuristic: if the question mentions standard Bac topics
+        (récurrence, intégrale, etc.) we're more confident Gemini knows it."""
         q = question.lower()
-
-        # High-confidence: classic exercise types with standard methods
         high_keywords = [
             "récurrence", "recurrence", "limite", "dérivée", "derivee",
             "primitive", "intégrale", "integrale", "complexe", "module",

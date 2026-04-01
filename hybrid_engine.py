@@ -1,7 +1,13 @@
 """
-Hybrid engine: routes each query to RAG, mixed, or prompt-only behavior
-based on retrieval quality (Case A/B/C). Reuses rag_engine for retrieval
-and defines its own prompt-only fallback for Case C.
+Hybrid engine: the "smart router". Always tries retrieval first, then decides
+what to do based on how good the results are:
+  Case A (distance <= 1.2): retrieval is strong -> use context like RAG
+  Case B (distance <= 1.6): retrieval is partial -> mix context + curriculum prompt
+  Case C (distance >  1.6): retrieval is useless -> fall back to prompt-only
+
+Why this design: RAG fails when retrieval is bad (wrong chapter, irrelevant docs).
+Instead of always trusting retrieval, the hybrid adapts — graceful degradation.
+Note: Case C uses its own lighter prompt, NOT the actual prompt_only_engine.
 """
 
 import time
@@ -49,6 +55,9 @@ class HybridResult:
     user_prompt_tokens_approx: int = 0
 
 
+# Curriculum summary — used in Case B and Case C prompts so Gemini knows
+# the Bac program even when retrieval didn't find relevant documents.
+# This is a condensed version of what's in prompt_only_engine.
 _CURRICULUM_KNOWLEDGE = """
 INVENTAIRE DU PROGRAMME PAR CHAPITRE (Bac Tunisien — Section Mathématiques) :
 
@@ -110,6 +119,7 @@ Si l'élève demande une méthode hors programme :
 """
 
 
+# Case A prompt: same as RAG — trust the retrieved context fully
 _SYSTEM_PROMPT_CASE_A = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé Baccalauréat (Section Maths).
 
 OBJECTIF:
@@ -151,6 +161,8 @@ INTERDIT:
 - Si l'élève demande une méthode hors programme : REFUSE et propose l'alternative bac-compatible.
 - Inventer des résultats non présents dans le CONTEXTE."""
 
+# Case B prompt: the novel contribution — use BOTH retrieved docs AND curriculum knowledge.
+# Tells the model to signal which source it uses: "D'après la Source X" vs "D'après le programme"
 _SYSTEM_PROMPT_CASE_B = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé Baccalauréat (Section Maths).
 
 OBJECTIF:
@@ -189,6 +201,8 @@ INTERDIT:
 - Méthodes HORS PROGRAMME
 - Inventer des résultats ou citer des examens spécifiques sans certitude"""
 
+# Case C prompt: retrieval failed, fall back to parametric knowledge only.
+# Similar to prompt_only_engine but lighter (fewer components).
 _SYSTEM_PROMPT_CASE_C = """Tu es "Monsieur Tounsi", professeur tunisien de mathématiques spécialisé dans la préparation au Baccalauréat (Section Mathématiques).
 
 ═══════════════════════════════════════
@@ -367,7 +381,8 @@ class TunisianMathHybrid:
         logger.info("Initializing TunisianMathHybrid engine...")
         t0 = time.monotonic()
 
-        # Compose the RAG engine for retrieval (loads ChromaDB + BGE-M3)
+        # Reuse the RAG engine for its retrieval logic (ChromaDB + BGE-M3)
+        # We don't duplicate the retrieval code — just call _two_stage_retrieve()
         self._rag = TunisianMathRAG()
 
         # Vertex AI model for generation (may differ from RAG's default)
@@ -395,7 +410,9 @@ class TunisianMathHybrid:
     # ──────────────────────────────────────────
     @staticmethod
     def _route_case(selected_docs: List[RetrievedDoc]) -> str:
-        """Returns 'A', 'B', or 'C' based on best retrieval distance."""
+        """The router: looks at the best L2 distance and picks a case.
+        Why L2 distance: it's what ChromaDB returns. Lower = more similar.
+        The thresholds (1.2, 1.6) are heuristic — chosen by manual inspection."""
         if not selected_docs:
             return "C"
 

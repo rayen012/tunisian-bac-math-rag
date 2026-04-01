@@ -1,5 +1,7 @@
 """
 RAG engine: two-stage retrieval + prompt compilation + Gemini generation.
+This is the main retrieval-augmented system. It searches ChromaDB for relevant
+corrections and course material, then feeds them as context to Gemini.
 """
 
 import time
@@ -31,6 +33,8 @@ logger = setup_logging("rag_engine")
 # ══════════════════════════════════════════════
 # Embedding function (shared with build_db)
 # ══════════════════════════════════════════════
+# Singleton pattern: the embedding model is ~500MB, so we load it only once
+# and reuse it across all queries. Without this, each query would reload the model.
 class BGEM3EmbeddingFunction(EmbeddingFunction):
     _instance = None
 
@@ -116,7 +120,10 @@ class TunisianMathRAG:
     # Retrieval
     # ──────────────────────────────────────────
 
-    _OVERFETCH_N = 50  # over-fetch then filter in Python (avoids ChromaDB desync bugs)
+    # Why over-fetch 50 then filter in Python: ChromaDB's built-in `where` filter
+    # sometimes misses documents due to index sync issues. Fetching more results
+    # and filtering ourselves is more reliable.
+    _OVERFETCH_N = 50
 
     @staticmethod
     def _matches_filter(meta: Dict, where_filter: Optional[Dict]) -> bool:
@@ -199,7 +206,9 @@ class TunisianMathRAG:
     def _fetch_exercise_companions(
         self, correction_docs: List[RetrievedDoc],
     ) -> List[RetrievedDoc]:
-        """For corrections, fetch the matching exercise statements."""
+        """For corrections, fetch the matching exercise statements.
+        Why: if we found a correction for Bac2023_Ex2, we also want the exercise
+        statement so Gemini sees the full problem+solution pair, not just the answer."""
         seen_keys: set = set()
         companions: list = []
 
@@ -309,7 +318,11 @@ class TunisianMathRAG:
         return ranked[:max_chapters]
 
     def _two_stage_retrieve(self, query: str) -> tuple:
-        """First pass: corrections. Second pass: course material scoped by chapter."""
+        """Two-stage retrieval — the core of the RAG engine.
+        1st pass: search corrections (is_solution=true) for redaction style exemplars.
+        2nd pass: search course material, scoped to the chapter(s) found in pass 1.
+        Why two passes: corrections give the answer style, course material gives
+        the theoretical backing (theorems, properties). Both are needed."""
         # ── First pass: corrections from Bac exams, series, and exercises ──
         first_pass = self._retrieve(
             query,
@@ -547,7 +560,7 @@ CONSIGNES FINALES:
                 resp = self.model.generate_content(
                     system_prompt + "\n\n" + user_prompt,
                     generation_config=GenerationConfig(
-                        temperature=0.15,
+                        temperature=0.15,    # low but not 0: allows slight variation while staying faithful
                         max_output_tokens=4096,
                     ),
                 )
