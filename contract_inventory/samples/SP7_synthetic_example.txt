@@ -1,0 +1,55 @@
+SP7 SERVICE AGREEMENT — SYNTHETIC EXAMPLE FOR PIPELINE TESTING
+
+This file is a fabricated SP7-style contract used only to exercise the
+extraction pipeline end-to-end. It does not represent any real agreement.
+
+================================================================
+SCHEDULE 2 — SERVICE SCOPE
+================================================================
+
+Section 3.1 Base Package
+
+The Supplier shall provide the following services as part of the Base
+Package for the fixed annual fee set out in Schedule 4:
+
+  (a) Level 2 incident management for the SP7 platform during business
+      hours (Mon–Fri, 08:00–18:00 CET);
+  (b) Monthly availability reporting;
+  (c) Configuration management of the production environment, including
+      but not limited to such operational adjustments as the Customer
+      may reasonably request;
+  (d) Warranty support for any defect identified during the Warranty
+      Period, with no separate fee and no cap on remediation hours.
+
+Section 3.2 Time & Materials Add-Ons
+
+The following services are available on a Time & Materials basis at the
+rates set out in the Rate Card (Schedule 5):
+
+  - Out-of-hours incident response (Rate Card item RC-OOH-01)
+  - Custom report development (Rate Card item RC-RPT-04)
+  - Migration and major version upgrades (Rate Card item RC-MIG-02)
+
+================================================================
+SCHEDULE 3 — PATCH MANAGEMENT
+================================================================
+
+Section 4.1 The Supplier shall apply security patches classified as
+"Critical" or "High" by the vendor to all SP7 production servers within
+14 calendar days of release. Routine OS and application patches shall be
+applied on a quarterly basis.
+
+Section 4.2 Patch management is included in the Base Package fee for
+the term of this Agreement and is not separately chargeable.
+
+Section 4.3 Patch management services under this Schedule terminate on
+31 December 2027, after which patch management shall be available only
+on a Time & Materials basis.
+
+================================================================
+SCHEDULE 6 — SERVICE LEVELS
+================================================================
+
+Section 7.2 Service-level credits payable by the Supplier in respect of
+any failure to meet the agreed availability target shall be capped at
+fifteen percent (15%) of the annual Base Package fee.
