@@ -3,6 +3,10 @@
 Two questions only — base package / T&M with commercial-risk flags, and patch
 management. Every non-trivial field carries a verbatim ``quote`` so the
 extraction can be verified against the source text after the LLM call.
+
+Page numbers and source-file attribution are populated deterministically
+after the model returns by finding each quote in the marked-up source — the
+model is not trusted to count pages.
 """
 
 from __future__ import annotations
@@ -49,7 +53,15 @@ class TMAddon(BaseModel):
     )
     quote: str = Field(description="Verbatim quote from the contract.")
     source_section: Optional[str] = Field(
-        default=None, description="Section, schedule, or page reference."
+        default=None, description="Section, schedule, or clause reference."
+    )
+    source_page: Optional[int] = Field(
+        default=None,
+        description="1-based page number. Populated post-extraction; do not set.",
+    )
+    source_file: Optional[str] = Field(
+        default=None,
+        description="Source file name (multi-file families). Populated post-extraction.",
     )
 
 
@@ -57,6 +69,8 @@ class CommercialRiskFlag(BaseModel):
     risk_type: RiskType
     evidence_quote: str = Field(description="Verbatim quote from the contract.")
     source_section: Optional[str] = None
+    source_page: Optional[int] = None
+    source_file: Optional[str] = None
     severity: Severity
     rationale: str = Field(
         description="One-sentence explanation of why this is a commercial risk."
@@ -69,6 +83,8 @@ class BasePackage(BaseModel):
         description="Verbatim quote defining the base package scope. None if absent.",
     )
     source_section: Optional[str] = None
+    source_page: Optional[int] = None
+    source_file: Optional[str] = None
     scope_summary: Optional[str] = Field(
         default=None,
         description="Plain-language summary of what the base package covers.",
@@ -93,12 +109,14 @@ class PatchManagement(BaseModel):
         default=None, description="Verbatim quote from the contract."
     )
     source_section: Optional[str] = None
+    source_page: Optional[int] = None
+    source_file: Optional[str] = None
 
 
 class ContractExtraction(BaseModel):
-    """Top-level extraction result for one contract."""
+    """Top-level extraction result for one contract (which may span multiple files)."""
 
-    contract_id: str = Field(description="Filename or identifier supplied by the caller.")
+    contract_id: str = Field(description="Identifier supplied by the caller (folder or file stem).")
 
     base_package: BasePackage
     tm_addons: List[TMAddon] = Field(
@@ -122,4 +140,18 @@ class ContractExtraction(BaseModel):
     reviewer_notes: Optional[str] = Field(
         default=None,
         description="Anything a human reviewer should know — ambiguities, conflicting clauses, OCR artifacts.",
+    )
+
+    # ----- Populated post-extraction (not produced by the model) -----
+    source_files: List[str] = Field(
+        default_factory=list,
+        description="File paths that contributed to this extraction. Populated post-extraction.",
+    )
+    review_required: bool = Field(
+        default=False,
+        description="True if validation rules say a human must review this row.",
+    )
+    validation_warnings: List[str] = Field(
+        default_factory=list,
+        description="Deterministic validation findings (missing evidence, unparseable date, etc.).",
     )

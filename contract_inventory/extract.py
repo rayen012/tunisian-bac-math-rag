@@ -1,10 +1,15 @@
 """LLM extraction for SP7 contracts.
 
-Single-pass structured extraction via ``client.messages.parse()``. The system
-prompt is cached so repeated runs across many contracts are cheap. After the
-model returns, every quote field is verified against the source text — quotes
-that don't appear verbatim are flagged in ``reviewer_notes`` rather than
-silently trusted.
+Single-pass structured extraction via ``client.messages.parse()`` with
+prompt caching on the system prompt. After the model returns:
+
+  1. Each verbatim quote is checked against the source text. Failures are
+     recorded for the validator.
+  2. ``source_page`` / ``source_file`` are derived deterministically by
+     finding each quote in the marker-annotated source — the model is not
+     trusted to count pages or attribute files.
+  3. ``validate.validate()`` applies deterministic rules and may set
+     ``review_required = True``.
 """
 
 from __future__ import annotations
@@ -14,8 +19,15 @@ from typing import Optional
 
 import anthropic
 
-from .parse import quote_appears_in
-from .schema import ContractExtraction
+from .parse import find_file_for_quote, find_page_for_quote, quote_appears_in
+from .schema import (
+    BasePackage,
+    CommercialRiskFlag,
+    ContractExtraction,
+    PatchManagement,
+    TMAddon,
+)
+from .validate import validate as validate_extraction
 
 
 SYSTEM_PROMPT = """\
@@ -56,9 +68,26 @@ CRITICAL RULES:
   clear textual support, `medium` if some fields required interpretation,
   `low` if the contract is ambiguous or incomplete.
 - `reviewer_notes` is for genuine ambiguities a human should resolve.
+- A `risk_type` of `lump_sum_warranty` MUST be supported by an explicit
+  quote showing the warranty is in the base fee with no cap on remediation.
+  If the warranty has a separate fee, an hour cap, or a defined window with
+  a cap, do NOT raise this flag.
+
+Source markers in the contract text:
+- ``=== FILE: <name> | <path> ===`` indicates a file boundary in a
+  multi-file contract family. Use the file name in `source_section` when
+  helpful.
+- ``[[PAGE n]]`` indicates the start of page n. Do NOT cite page numbers
+  yourself — page attribution is handled deterministically after extraction.
+  Just keep these markers in mind when reading; do not include them in
+  any `quote`.
 
 You will be given the contract text wrapped in <contract> tags. Use only
 the provided text — do not rely on outside knowledge of the supplier.
+
+Leave the following fields at their defaults — they are populated after
+extraction: `source_page`, `source_file`, `source_files`, `review_required`,
+`validation_warnings`.
 """
 
 
@@ -74,10 +103,15 @@ def extract_contract(
     client: anthropic.Anthropic,
     contract_id: str,
     contract_text: str,
+    source_files: list[str],
     model: str = "claude-opus-4-7",
     effort: str = "high",
 ) -> ExtractionResult:
-    """Extract the schema from one contract."""
+    """Extract the schema from one contract family.
+
+    ``contract_text`` may concatenate multiple files separated by
+    ``=== FILE: ... ===`` markers (see :mod:`contract_inventory.family`).
+    """
     user_content = (
         f"Contract identifier: {contract_id}\n\n"
         f"<contract>\n{contract_text}\n</contract>\n\n"
@@ -101,6 +135,7 @@ def extract_contract(
     )
 
     extraction: ContractExtraction = response.parsed_output
+    extraction.source_files = source_files
 
     invalid = _verify_quotes(extraction, contract_text)
     if invalid:
@@ -109,6 +144,9 @@ def extract_contract(
         extraction.reviewer_notes = (
             f"{note_prefix}. {existing}".strip() if existing else note_prefix
         )
+
+    _resolve_pages_and_files(extraction, contract_text)
+    validate_extraction(extraction, invalid)
 
     return ExtractionResult(
         extraction=extraction,
@@ -127,7 +165,6 @@ def extract_contract(
 
 
 def _verify_quotes(extraction: ContractExtraction, source: str) -> list[str]:
-    """Return a list of dotted field paths whose quotes don't appear in source."""
     invalid: list[str] = []
 
     def check(path: str, quote: Optional[str]) -> None:
@@ -145,3 +182,29 @@ def _verify_quotes(extraction: ContractExtraction, source: str) -> list[str]:
     check("patch_management.evidence_quote", extraction.patch_management.evidence_quote)
 
     return invalid
+
+
+def _resolve_pages_and_files(extraction: ContractExtraction, source: str) -> None:
+    """Populate source_page and source_file from quotes, deterministically."""
+    _resolve_one(extraction.base_package, "definition_quote", source)
+    for addon in extraction.tm_addons:
+        _resolve_one(addon, "quote", source)
+    for flag in extraction.commercial_risk_flags:
+        _resolve_one(flag, "evidence_quote", source)
+    _resolve_one(extraction.patch_management, "evidence_quote", source)
+
+
+def _resolve_one(
+    obj: BasePackage | TMAddon | CommercialRiskFlag | PatchManagement,
+    quote_attr: str,
+    source: str,
+) -> None:
+    quote = getattr(obj, quote_attr, None)
+    if not quote:
+        return
+    page = find_page_for_quote(quote, source)
+    if page is not None:
+        obj.source_page = page
+    file_name = find_file_for_quote(quote, source)
+    if file_name is not None:
+        obj.source_file = file_name

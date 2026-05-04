@@ -1,0 +1,14 @@
+{
+  "_comment": "Hand-labeled expected values for the synthetic sample. Only fields present here are asserted by evaluate.py.",
+  "patch_management": {
+    "required": true,
+    "pricing_model": "included",
+    "end_date": "2027-12-31"
+  },
+  "base_package": {
+    "scope_summary": "yes-non-empty"
+  },
+  "commercial_risk_flags": ["lump_sum_warranty", "unbounded_scope"],
+  "not_found": [],
+  "confidence": "high"
+}

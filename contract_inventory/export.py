@@ -1,7 +1,8 @@
 """Export extractions to Excel.
 
-Two sheets: `Inventory` (one row per contract, flat KPI columns) and
-`Evidence` (one row per extracted quote so a reviewer can spot-check).
+Two sheets: ``Inventory`` (one row per contract, flat KPI columns) and
+``Evidence`` (one row per extracted quote with page + file). Rows where
+``review_required`` is True are highlighted so reviewers can triage.
 """
 
 from __future__ import annotations
@@ -18,9 +19,12 @@ from .schema import ContractExtraction
 
 INVENTORY_HEADERS = [
     "contract_id",
+    "review_required",
     "confidence",
+    "source_files",
     "base_package_summary",
     "base_package_quote",
+    "base_package_page",
     "tm_addon_count",
     "tm_addons",
     "risk_count",
@@ -30,7 +34,9 @@ INVENTORY_HEADERS = [
     "patch_pricing_model",
     "patch_scope",
     "patch_end_date",
+    "patch_page",
     "not_found",
+    "validation_warnings",
     "reviewer_notes",
 ]
 
@@ -38,6 +44,8 @@ EVIDENCE_HEADERS = [
     "contract_id",
     "field",
     "quote",
+    "source_file",
+    "source_page",
     "source_section",
     "extra",
 ]
@@ -61,6 +69,7 @@ def write_excel(extractions: Iterable[ContractExtraction], path: Path) -> None:
     _style_header(ev)
     _autosize(inv)
     _autosize(ev)
+    _highlight_review_rows(inv)
     _highlight_low_confidence(inv)
 
     wb.save(path)
@@ -72,9 +81,12 @@ def _inventory_row(e: ContractExtraction) -> list:
     risk_types = ", ".join(sorted({f.risk_type.value for f in e.commercial_risk_flags}))
     return [
         e.contract_id,
+        "yes" if e.review_required else "no",
         e.confidence.value,
+        "; ".join(Path(p).name for p in e.source_files),
         e.base_package.scope_summary or "",
         e.base_package.definition_quote or "",
+        e.base_package.source_page or "",
         len(e.tm_addons),
         addons,
         len(e.commercial_risk_flags),
@@ -84,7 +96,9 @@ def _inventory_row(e: ContractExtraction) -> list:
         e.patch_management.pricing_model.value,
         e.patch_management.scope_summary or "",
         e.patch_management.end_date or "",
+        e.patch_management.source_page or "",
         "; ".join(e.not_found),
+        " | ".join(e.validation_warnings),
         e.reviewer_notes or "",
     ]
 
@@ -96,6 +110,8 @@ def _evidence_rows(e: ContractExtraction) -> list[list]:
             e.contract_id,
             "base_package",
             e.base_package.definition_quote,
+            e.base_package.source_file or "",
+            e.base_package.source_page or "",
             e.base_package.source_section or "",
             "",
         ])
@@ -104,6 +120,8 @@ def _evidence_rows(e: ContractExtraction) -> list[list]:
             e.contract_id,
             f"tm_addon: {addon.service}",
             addon.quote,
+            addon.source_file or "",
+            addon.source_page or "",
             addon.source_section or "",
             addon.rate_card_ref or "",
         ])
@@ -112,6 +130,8 @@ def _evidence_rows(e: ContractExtraction) -> list[list]:
             e.contract_id,
             f"risk: {flag.risk_type.value} ({flag.severity.value})",
             flag.evidence_quote,
+            flag.source_file or "",
+            flag.source_page or "",
             flag.source_section or "",
             flag.rationale,
         ])
@@ -120,6 +140,8 @@ def _evidence_rows(e: ContractExtraction) -> list[list]:
             e.contract_id,
             "patch_management",
             e.patch_management.evidence_quote,
+            e.patch_management.source_file or "",
+            e.patch_management.source_page or "",
             e.patch_management.source_section or "",
             f"pricing={e.patch_management.pricing_model.value}; end={e.patch_management.end_date or ''}",
         ])
@@ -149,11 +171,24 @@ def _autosize(ws, max_width: int = 60) -> None:
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
 
+def _highlight_review_rows(ws) -> None:
+    review_fill = PatternFill("solid", fgColor="F4B084")  # orange — needs review
+    review_col = INVENTORY_HEADERS.index("review_required") + 1
+    for row in ws.iter_rows(min_row=2):
+        if row[review_col - 1].value == "yes":
+            for c in row:
+                c.fill = review_fill
+
+
 def _highlight_low_confidence(ws) -> None:
     yellow = PatternFill("solid", fgColor="FFF2CC")
     red = PatternFill("solid", fgColor="F8CBAD")
     confidence_col = INVENTORY_HEADERS.index("confidence") + 1
+    review_col = INVENTORY_HEADERS.index("review_required") + 1
     for row in ws.iter_rows(min_row=2):
+        # Don't override the orange review highlight
+        if row[review_col - 1].value == "yes":
+            continue
         cell = row[confidence_col - 1]
         if cell.value == "low":
             for c in row:
